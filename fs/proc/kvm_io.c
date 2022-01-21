@@ -8,9 +8,16 @@
 #include <linux/kthread.h>
 
 int kvm_pids[1024]={0};
+int kvm_vhost[100000]={0};
+int vhost_pids[100000]={0};
+int vhost_read[100000]={0};
+int vhost_write[100000]={0};
 int kvm_pids_read_bytes[1024]={0};
 int kvm_pids_write_bytes[1024]={0};
-static int control =0;
+EXPORT_SYMBOL(kvm_vhost);
+EXPORT_SYMBOL(vhost_read);
+EXPORT_SYMBOL(vhost_write);
+EXPORT_SYMBOL(vhost_pids);
 EXPORT_SYMBOL(kvm_pids);
 static int pids(struct seq_file *m, void *v)
 {
@@ -34,11 +41,7 @@ static int pids(struct seq_file *m, void *v)
 static int pids_easy(struct seq_file *m, void *v)
 {
         int i;
-        seq_printf(m,"kvm io is %d \n",control);
-	if(control)
-		control=0;
-	else
-		control=1;
+        seq_printf(m,"kvm pid is \n");
         for(i=0;i<1024;i++)
         {
                 if(kvm_pids[i]==0)
@@ -106,6 +109,7 @@ static int kvm_io(struct seq_file *m, void *v)
                         if(kvm_task)
 			{
 				do_io_accounting(kvm_task,i,0,0);
+				
 			}
                         else
 			{
@@ -125,7 +129,10 @@ static int kvm_io(struct seq_file *m, void *v)
                         if(kvm_task)
 			{
                                 do_io_accounting(kvm_task,i,1,0);
-				seq_printf(m,"kvm pid %d read %d bytes/s write %d bytes/s\n",kvm_pids[i],kvm_pids_read_bytes[i],kvm_pids_write_bytes[i]);
+				seq_printf(m,"disk kvm pid %d read %d bytes/s write %d bytes/s\n",kvm_pids[i],kvm_pids_read_bytes[i],kvm_pids_write_bytes[i]);
+				seq_printf(m,"network kvm pid %d read %d bytes/s write %d bytes/s\n",kvm_pids[i],vhost_read[kvm_pids[i]],vhost_write[kvm_pids[i]]);
+				vhost_read[kvm_pids[i]]=0;
+				vhost_write[kvm_pids[i]]=0;
 			}	
                         else
                         {
@@ -144,11 +151,6 @@ static int io_detector(void *arg0)
         struct task_struct *kvm_task;
 	while(!kthread_should_stop())
 	{
-	if(control)
-	{
-		msleep(1000);
-		continue;
-	}
         for(i=0;i<1024;i++)
         {
                 if(kvm_pids[i]==0)
