@@ -66,8 +66,8 @@
 /* Worst case buffer size needed for holding an integer. */
 #define ITOA_MAX_LEN 12
 
-extern int kvm_pids[1024];
-static int pids_idx=0;
+
+//extern int kvm_exit_clean_up(int pid);
 MODULE_AUTHOR("Qumranet");
 MODULE_LICENSE("GPL");
 
@@ -763,8 +763,8 @@ static struct kvm *kvm_create_vm(unsigned long type)
 	kvm->mm = current->mm;
 	//Start Huawei
 	printk("KVM CREATE! PID: %d\n",current->pid);
-	kvm_pids[pids_idx%1024]=current->pid;
-	pids_idx++;
+	//kvm_pids[pids_idx%1024]=current->pid;
+	//pids_idx++;
 	//Finish Huawei
 	kvm_eventfd_init(kvm);
 	mutex_init(&kvm->lock);
@@ -870,6 +870,9 @@ static void kvm_destroy_vm(struct kvm *kvm)
 {
 	int i;
 	struct mm_struct *mm = kvm->mm;
+	//Huawei scheduler boosting
+	//kvm_exit_clean_up(current->pid);
+	//
 	kvm_uevent_notify_change(KVM_EVENT_DESTROY_VM, kvm);
 	kvm_destroy_vm_debugfs(kvm);
 	kvm_arch_sync_events(kvm);

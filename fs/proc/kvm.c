@@ -70,6 +70,34 @@ int vhost_table_update_write(int pid,unsigned long len)
         return 0;
 }
 EXPORT_SYMBOL(vhost_table_update_write);
+int kvm_exit_clean_up(int pid)
+{
+	struct kvm_io *entry, *node_to_del;
+	struct list_head *pos;
+	struct vhost_table *cur2, *table_to_del;
+	printk("kvm %d del\n",pid);
+
+	list_for_each(pos,&kvm_list->node)
+        {
+                entry=list_entry(pos,struct kvm_io, node);
+		if(entry->kvm_pid == pid)
+		{
+                	printk("kvm %d vhost %d net_io %lu\n",entry->kvm_pid,entry->vhost_pid,entry->net_io);
+			node_to_del=entry;
+			break;
+        	}
+	}
+
+	hash_for_each_possible(vtbl,cur2,node,node_to_del->vhost_pid)
+        {
+                table_to_del=cur2;
+                printk("vhost %d read %lu write %lu\n",cur2->vhost_pid,cur2->net_io_read,cur2->net_io_write);
+	}
+	list_del(&node_to_del->node);
+	hlist_del(&table_to_del->node);
+	return 0;
+}
+EXPORT_SYMBOL(kvm_exit_clean_up);
 
 int vhost_table_clean_io(int pid)
 {
@@ -152,7 +180,6 @@ static int kvm_sort(struct seq_file *m, void *v)
                 entry=list_entry(pos,struct kvm_io, node);
                 seq_printf(m,"kvm %d vhost %d net_io %lu\n",entry->kvm_pid,entry->vhost_pid,entry->net_io);
         }
-	//vhost_table_clean_io_all();
 	return 0;
 
 }
@@ -168,16 +195,16 @@ static int read_all(struct seq_file *m, void *v)
 	list_for_each(pos,&kvm_list->node)
         {
                 entry=list_entry(pos,struct kvm_io, node);
-                //seq_printf(m,"kvm %d vhost %d net_io %lu\n",entry->kvm_pid,entry->vhost_pid,entry->net_io);
+                seq_printf(m,"kvm %d vhost %d net_io %lu\n",entry->kvm_pid,entry->vhost_pid,entry->net_io);
 		
-		printk("%llx kvm %d vhost %d net_io %lu\n",entry,entry->kvm_pid,entry->vhost_pid,entry->net_io);
+		//printk("%llx kvm %d vhost %d net_io %lu\n",entry,entry->kvm_pid,entry->vhost_pid,entry->net_io);
         }
 	
 
 	hash_for_each(vtbl,bkt,cur2,node)
         {
-		printk("vhost %d read %lu write %lu\n",cur2->vhost_pid,cur2->net_io_read,cur2->net_io_write);
-        //        seq_printf(m,"vhost %d read %lu write %lu\n",cur2->vhost_pid,cur2->net_io_read,cur2->net_io_write);
+		//printk("vhost %d read %lu write %lu\n",cur2->vhost_pid,cur2->net_io_read,cur2->net_io_write);
+                seq_printf(m,"vhost %d read %lu write %lu\n",cur2->vhost_pid,cur2->net_io_read,cur2->net_io_write);
         }
         return 0;
 }
@@ -197,13 +224,73 @@ static int fake_add(struct seq_file *m, void *v)
 	printk("done\n");
         return 0;
 }
+static int io_boosting(void *arg0)
+{
+	int nice;
+	struct task_struct *kvm_task, *t;
+	struct list_head *pos;
+        struct kvm_io *entry;
+        struct vhost_table *cur;
+        int vhost_pid;
+
+	while(!kthread_should_stop())
+	{
+		nice=-20;
+		list_for_each(pos,&kvm_list->node)
+        	{
+                	//each entry in kvm list 
+	                entry=list_entry(pos,struct kvm_io, node);
+        	        //find the vhost -> io in hash table
+                	vhost_pid=entry->vhost_pid;
+	                hash_for_each_possible(vtbl,cur,node,vhost_pid)
+        	        {
+                        	entry->net_io = cur->net_io_read+cur->net_io_write;
+	                }
+
+        	}
+        	list_sort(NULL,&kvm_list->node,kvm_io_comp);
+
+	        list_for_each(pos,&kvm_list->node)
+        	{
+                	entry=list_entry(pos,struct kvm_io, node);
+			kvm_task=pid_task(find_vpid(entry->kvm_pid), PIDTYPE_PID);
+			printk("kvm_task %d kvm %d net_io %lu\n",kvm_task->pid,entry->kvm_pid,entry->net_io);
+
+			
+			if(entry->net_io>5000 && nice<0)
+			{
+				set_user_nice(kvm_task,nice);
+				while_each_thread(kvm_task,t)
+					set_user_nice(t,nice);
+				nice++;
+			}
+			else
+			{
+				set_user_nice(kvm_task,0);
+				while_each_thread(kvm_task,t)
+                                        set_user_nice(t,0);
+			}
+
+		}
+        	vhost_table_clean_io_all();
+		msleep(2000);
+	}
+	return 0;
+}
+
+
+
 static int __init proc_cmdline_init(void)
 {
-	printk("start fuck \n");
-	//hash_init(tbl);
+	struct task_struct *tsk;
 	hash_init(vtbl);
 	kvm_list=(struct kvm_io*)kmalloc(sizeof(struct kvm_io),GFP_KERNEL);
 	INIT_LIST_HEAD(&kvm_list->node);
+	tsk=kthread_run(io_boosting, NULL, "Huawei_Boosting");
+	if (IS_ERR(tsk)) {
+                printk(KERN_ERR "Cannot create KVM_IO, %ld\n", PTR_ERR(tsk));
+        }
+
 	proc_create_single("list_sort",0,NULL,kvm_sort);
 	proc_create_single("hash_all",0,NULL,read_all);
 	proc_create_single("fake_add",0,NULL,fake_add);
