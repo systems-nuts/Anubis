@@ -6,17 +6,17 @@
 #include <linux/delay.h>
 #include <linux/task_io_accounting_ops.h>
 #include <linux/kthread.h>
+#include <linux/list_sort.h>
 #include <linux/tong.h>
 #include <linux/sort.h>
 DECLARE_HASHTABLE(tbl,2);
 DECLARE_HASHTABLE(vtbl,10);
 
 static struct kvm_io *kvm_list;
-
 int kvm_vhost_add(int pid1, int pid2)
 {
 	struct kvm_vhost *entry;
-	entry=(struct kvm_vhost*)kmalloc(sizeof(struct kvm_vhost*),GFP_KERNEL);
+	entry=(struct kvm_vhost*)kmalloc(sizeof(struct kvm_vhost),GFP_KERNEL);
 	entry->kvm_pid=pid1;
 	entry->vhost_pid=pid2;
 	hash_add(tbl,&entry->node,entry->kvm_pid);
@@ -26,13 +26,13 @@ EXPORT_SYMBOL(kvm_vhost_add);
 
 int list_kvm_vhost_add(int pid1, int pid2)
 {
-	printk("list add %d %d\n",pid1, pid2);
-        struct kvm_io *entry;
-        entry=(struct kvm_io*)kmalloc(sizeof(struct kvm_io*),GFP_KERNEL);
-        entry->kvm_pid=pid1;
-        entry->vhost_pid=pid2;
-	entry->net_io=0;
-        list_add(&entry->node,&kvm_list->node);
+        struct kvm_io *list;
+        list=(struct kvm_io*)kmalloc(sizeof(struct kvm_io),GFP_KERNEL);
+        list->kvm_pid=pid1;
+        list->vhost_pid=pid2;
+	list->net_io=0;
+        list_add(&list->node,&kvm_list->node);
+	printk("list->kvm %d vhost %d\n",list->kvm_pid,list->vhost_pid);
         return 0;
 }
 EXPORT_SYMBOL(list_kvm_vhost_add);
@@ -40,9 +40,9 @@ EXPORT_SYMBOL(list_kvm_vhost_add);
 
 int vhost_table_add(int pid)
 {
+	struct vhost_table *entry;
 	printk("vhost table add %d \n",pid);
-        struct vhost_table *entry;
-        entry=(struct vhost_table*)kmalloc(sizeof(struct vhost_table*),GFP_KERNEL);
+        entry=(struct vhost_table*)kmalloc(sizeof(struct vhost_table),GFP_KERNEL);
         entry->vhost_pid=pid;
 	entry->net_io_read=0;
 	entry->net_io_write=0;
@@ -125,18 +125,18 @@ int kvm_io_comp(void *priv, const struct list_head *_a,const struct list_head *_
 }
 static int kvm_sort(struct seq_file *m, void *v)
 {
-	seq_printf(m,"update kvm_list\n");
-	printk("sort\n");
 	struct list_head *pos;
 	struct kvm_io *entry;
 	struct vhost_table *cur;
-	/*
+	int vhost_pid;
+	seq_printf(m,"update kvm_list\n");
 	list_for_each(pos,&kvm_list->node)
 	{
 		//each entry in kvm list 
 		entry=list_entry(pos,struct kvm_io, node);
 		//find the vhost -> io in hash table
-		hash_for_each_possible(vtbl,cur,node,entry->vhost_pid)
+		vhost_pid=entry->vhost_pid;
+		hash_for_each_possible(vtbl,cur,node,vhost_pid)
 	        {
 		//	printk("vhost %d, read %lu, write %lu, total %lu\n",cur->net_io_read,cur->net_io_write);
                 	entry->net_io = cur->net_io_read+cur->net_io_write;
@@ -144,7 +144,6 @@ static int kvm_sort(struct seq_file *m, void *v)
 
 		seq_printf(m,"kvm %d vhost %d net_io %lu\n",entry->kvm_pid,entry->vhost_pid,entry->net_io);
 	}
-	*/
 	list_sort(NULL,&kvm_list->node,kvm_io_comp);
 	seq_printf(m,"after sort\n");
 
@@ -153,7 +152,7 @@ static int kvm_sort(struct seq_file *m, void *v)
                 entry=list_entry(pos,struct kvm_io, node);
                 seq_printf(m,"kvm %d vhost %d net_io %lu\n",entry->kvm_pid,entry->vhost_pid,entry->net_io);
         }
-	vhost_table_clean_io_all();
+	//vhost_table_clean_io_all();
 	return 0;
 
 }
@@ -161,7 +160,6 @@ static int kvm_sort(struct seq_file *m, void *v)
 static int read_all(struct seq_file *m, void *v)
 {
 	unsigned bkt;
-	//struct kvm_vhost *cur1;
 	struct vhost_table *cur2;
 	struct list_head *pos;
         struct kvm_io *entry;
@@ -170,32 +168,33 @@ static int read_all(struct seq_file *m, void *v)
 	list_for_each(pos,&kvm_list->node)
         {
                 entry=list_entry(pos,struct kvm_io, node);
-                seq_printf(m,"kvm %d vhost %d net_io %lu\n",entry->kvm_pid,entry->vhost_pid,entry->net_io);
-		printk("kvm %d vhost %d net_io %lu\n",entry->kvm_pid,entry->vhost_pid,entry->net_io);
+                //seq_printf(m,"kvm %d vhost %d net_io %lu\n",entry->kvm_pid,entry->vhost_pid,entry->net_io);
+		
+		printk("%llx kvm %d vhost %d net_io %lu\n",entry,entry->kvm_pid,entry->vhost_pid,entry->net_io);
         }
 	
 
 	hash_for_each(vtbl,bkt,cur2,node)
         {
 		printk("vhost %d read %lu write %lu\n",cur2->vhost_pid,cur2->net_io_read,cur2->net_io_write);
-                seq_printf(m,"vhost %d read %lu write %lu\n",cur2->vhost_pid,cur2->net_io_read,cur2->net_io_write);
+        //        seq_printf(m,"vhost %d read %lu write %lu\n",cur2->vhost_pid,cur2->net_io_read,cur2->net_io_write);
         }
-	vhost_table_clean_io_all();
         return 0;
 }
 static int fake1=100;
 static int fake2=200;
 static int fake_add(struct seq_file *m, void *v)
 {
-        printk("list add %d %d\n",fake1, fake2);
-        struct kvm_io *entry;
-        entry=(struct kvm_io*)kmalloc(sizeof(struct kvm_io*),GFP_KERNEL);
-        entry->kvm_pid=fake1;
-        entry->vhost_pid=fake2;
-        entry->net_io=fake1*fake2;
+	vhost_table_add(fake2);
+
+	list_kvm_vhost_add(fake1,fake2);
+
+	vhost_table_update_read(fake2,1000*fake1+fake2);
+
+
 	fake1+=42;
 	fake2+=79;
-        list_add(&entry->node,&kvm_list->node);
+	printk("done\n");
         return 0;
 }
 static int __init proc_cmdline_init(void)
@@ -203,9 +202,8 @@ static int __init proc_cmdline_init(void)
 	printk("start fuck \n");
 	//hash_init(tbl);
 	hash_init(vtbl);
-	kvm_list=(struct kvm_io*)kmalloc(sizeof(struct kvm_io*),GFP_KERNEL);
+	kvm_list=(struct kvm_io*)kmalloc(sizeof(struct kvm_io),GFP_KERNEL);
 	INIT_LIST_HEAD(&kvm_list->node);
-	printk("finish kvm_list init %llx\n",kvm_list);
 	proc_create_single("list_sort",0,NULL,kvm_sort);
 	proc_create_single("hash_all",0,NULL,read_all);
 	proc_create_single("fake_add",0,NULL,fake_add);
