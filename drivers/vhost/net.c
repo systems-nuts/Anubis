@@ -768,9 +768,9 @@ static int vhost_net_build_xdp(struct vhost_net_virtqueue *nvq,
 //extern int vhost_pids[100000];
 //extern int vhost_read[100000];
 //extern int vhost_write[100000];
-//extern int vhost_table_update_read(int pid,unsigned long len);
+extern int vhost_table_update_read(int pid,unsigned long len);
 //
-//extern int vhost_table_update_write(int pid,unsigned long len);
+extern int vhost_table_update_write(int pid,unsigned long len);
 static void handle_tx_copy(struct vhost_net *net, struct socket *sock)
 {
 	struct vhost_net_virtqueue *nvq = &net->vqs[VHOST_NET_VQ_TX];
@@ -857,7 +857,7 @@ done:
 		++nvq->done_idx;
 	} while (likely(!vhost_exceeds_weight(vq, ++sent_pkts, total_len)));
 	//vhost_read[vhost_pids[current->pid]]+=total_len;
-	//vhost_table_update_read(current->pid,total_len);
+	vhost_table_update_read(current->pid,total_len);
 	//printk("%d vhost handle_tx copy sent_pkt %d total len %ld\n",current->pid,sent_pkts,total_len);
 	vhost_tx_batch(net, nvq, sock, &msg);
 }
@@ -961,7 +961,7 @@ static void handle_tx_zerocopy(struct vhost_net *net, struct socket *sock)
 		vhost_net_tx_packet(net);
 	} while (likely(!vhost_exceeds_weight(vq, ++sent_pkts, total_len)));
 	//vhost_read[vhost_pids[current->pid]]+=total_len;
-	//vhost_table_update_read(current->pid,total_len);
+	vhost_table_update_read(current->pid,total_len);
 	//printk("%d vhost handle_tx zero copy sent_pkt %d total len %ld\n",current->pid,sent_pkts,total_len);
 }
 
@@ -1250,7 +1250,7 @@ static void handle_rx(struct vhost_net *net)
 		total_len += vhost_len;
 	} while (likely(!vhost_exceeds_weight(vq, ++recv_pkts, total_len)));
 	//vhost_write[vhost_pids[current->pid]]+=total_len;
-	//vhost_table_update_write(current->pid,total_len);
+	vhost_table_update_write(current->pid,total_len);
 	//printk("%d: vhost network get_rx total_len %ld \n",current->pid,total_len);
 	if (unlikely(busyloop_intr))
 		vhost_poll_queue(&vq->poll);

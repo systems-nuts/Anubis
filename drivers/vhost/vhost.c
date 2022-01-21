@@ -614,9 +614,9 @@ long vhost_dev_set_owner(struct vhost_dev *dev)
 			goto err_cgroup;
 	}
 	//vhost_pids[worker->pid]=current->pid;
-	//kvm_vhost[current->pid]=worker->pid;
+//kvm_vhost[current->pid]=worker->pid;
 	printk("I open the vhost thread %d for kvm pid %d\n",worker->pid,current->pid);
-	//list_kvm_vhost_add(current->pid,worker->pid);
+	list_kvm_vhost_add(current->pid,worker->pid);
 	vhost_table_add(worker->pid);
 
 	err = vhost_dev_alloc_iovecs(dev);
