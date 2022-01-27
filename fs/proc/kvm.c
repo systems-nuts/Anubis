@@ -11,8 +11,9 @@
 #include <linux/sort.h>
 DECLARE_HASHTABLE(tbl,2);
 DECLARE_HASHTABLE(vtbl,10);
-
+static int open;
 static struct kvm_io *kvm_list;
+static int control;
 int kvm_vhost_add(int pid1, int pid2)
 {
 	struct kvm_vhost *entry;
@@ -53,6 +54,8 @@ EXPORT_SYMBOL(vhost_table_add);
 int vhost_table_update_read(int pid,unsigned long len)
 {
 	struct vhost_table *cur;
+	if(open==1)
+		printk("%d read len %lu\n",pid,len);
 	hash_for_each_possible(vtbl,cur,node,pid)
 	{
 		cur->net_io_read+=len;
@@ -63,6 +66,8 @@ EXPORT_SYMBOL(vhost_table_update_read);
 int vhost_table_update_write(int pid,unsigned long len)
 {
         struct vhost_table *cur;
+	if(open==1)
+                printk("%d write len %lu\n",pid,len);
         hash_for_each_possible(vtbl,cur,node,pid)
         {
                 cur->net_io_write+=len;
@@ -254,35 +259,65 @@ static int io_boosting(void *arg0)
         	{
                 	entry=list_entry(pos,struct kvm_io, node);
 			kvm_task=pid_task(find_vpid(entry->kvm_pid), PIDTYPE_PID);
-			printk("kvm_task %d kvm %d net_io %lu\n",kvm_task->pid,entry->kvm_pid,entry->net_io);
-
 			
-			if(entry->net_io>5000 && nice<0)
+			t=kvm_task;
+			//printk("kvm_task %d kvm %d net_io %lu\n",kvm_task->pid,entry->kvm_pid,entry->net_io);
+			if(kvm_task && control==0 )
 			{
-				set_user_nice(kvm_task,nice);
-				while_each_thread(kvm_task,t)
-					set_user_nice(t,nice);
-				nice++;
+				if(entry->net_io>100 && nice<0)
+				{
+					set_user_nice(kvm_task,nice);
+					while_each_thread(kvm_task,t)
+					{
+						if(t)
+							set_user_nice(t,nice);
+					}
+					nice++;
+				}
+				else
+				{
+					set_user_nice(kvm_task,0);
+					while_each_thread(kvm_task,t)
+					{
+						if(t)
+                                       	 		set_user_nice(t,0);
+					}
+				}
 			}
-			else
-			{
-				set_user_nice(kvm_task,0);
-				while_each_thread(kvm_task,t)
-                                        set_user_nice(t,0);
-			}
-
 		}
         	vhost_table_clean_io_all();
-		msleep(2000);
+		msleep(1000);
 	}
 	return 0;
 }
 
-
-
+static int hash_print(struct seq_file *m, void *v)
+{
+	if(open==0) open=1;
+	else open =0;
+	seq_printf(m,"open %d\n",open);
+	return 0;
+}
+static int boosting(struct seq_file *m, void *v)
+{
+	
+	if(control==0)
+	{
+		control=1;
+		seq_printf(m,"control is %d, boosting disable\n",control);
+	}
+	else
+	{
+		control=0;
+		seq_printf(m,"control is %d, boosting enable\n",control);
+	}	
+	return 0;
+}
 static int __init proc_cmdline_init(void)
 {
 	struct task_struct *tsk;
+	control=0;
+	open=0;
 	hash_init(vtbl);
 	kvm_list=(struct kvm_io*)kmalloc(sizeof(struct kvm_io),GFP_KERNEL);
 	INIT_LIST_HEAD(&kvm_list->node);
@@ -294,6 +329,8 @@ static int __init proc_cmdline_init(void)
 	proc_create_single("list_sort",0,NULL,kvm_sort);
 	proc_create_single("hash_all",0,NULL,read_all);
 	proc_create_single("fake_add",0,NULL,fake_add);
+	proc_create_single("hash_print",0,NULL,hash_print);
+	proc_create_single("kvm_boosting",0,NULL,boosting);
         return 0;
 }
 fs_initcall(proc_cmdline_init);

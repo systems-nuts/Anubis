@@ -2496,6 +2496,8 @@ static int tun_sendmsg(struct socket *sock, struct msghdr *m, size_t total_len)
 	struct tun_msg_ctl *ctl = m->msg_control;
 	struct xdp_buff *xdp;
 
+//	printk("TUN %s current->pid %d total_len %ld\n",__func__,current->pid,total_len);
+
 	if (!tun)
 		return -EBADFD;
 
@@ -2541,7 +2543,7 @@ static int tun_recvmsg(struct socket *sock, struct msghdr *m, size_t total_len,
 	struct tun_struct *tun = tun_get(tfile);
 	void *ptr = m->msg_control;
 	int ret;
-
+	//printk("TUN %s current->pid %d total_len %ld\n",__func__,current->pid,total_len);
 	if (!tun) {
 		ret = -EBADFD;
 		goto out_free;
