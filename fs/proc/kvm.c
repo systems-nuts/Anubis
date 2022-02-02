@@ -8,12 +8,19 @@
 #include <linux/kthread.h>
 #include <linux/list_sort.h>
 #include <linux/tong.h>
+#include <linux/sched.h>
 #include <linux/sort.h>
+#include <linux/types.h>
 DECLARE_HASHTABLE(tbl,2);
 DECLARE_HASHTABLE(vtbl,10);
+struct sched_param {
+	int sched_priority;
+};
+static int fifo;
 static int open;
 static struct kvm_io *kvm_list;
 static int control;
+static struct sched_param *param;
 int kvm_vhost_add(int pid1, int pid2)
 {
 	struct kvm_vhost *entry;
@@ -230,6 +237,7 @@ static int fake_add(struct seq_file *m, void *v)
         return 0;
 }
 static int io_boosting(void *arg0)
+
 {
 	int nice;
 	struct task_struct *kvm_task, *t;
@@ -237,7 +245,6 @@ static int io_boosting(void *arg0)
         struct kvm_io *entry;
         struct vhost_table *cur;
         int vhost_pid;
-
 	while(!kthread_should_stop())
 	{
 		nice=-20;
@@ -262,9 +269,9 @@ static int io_boosting(void *arg0)
 			
 			t=kvm_task;
 			//printk("kvm_task %d kvm %d net_io %lu\n",kvm_task->pid,entry->kvm_pid,entry->net_io);
-			if(kvm_task && control==0 )
+			if(kvm_task && control==0 &&fifo!=0)
 			{
-				if(entry->net_io>100 && nice<0)
+				if(entry->net_io>0 && nice<0)
 				{
 					set_user_nice(kvm_task,nice);
 					while_each_thread(kvm_task,t)
@@ -284,9 +291,35 @@ static int io_boosting(void *arg0)
 					}
 				}
 			}
+			else if(kvm_task && fifo==0 && control!=0)
+			{
+				if(entry->net_io>0)
+                                {
+					param->sched_priority=nice+119;
+					sched_setscheduler(kvm_task, SCHED_FIFO, param);
+                                        while_each_thread(kvm_task,t)
+                                        {
+                                                if(t)
+							sched_setscheduler(t, SCHED_FIFO, param);
+                                        }
+                                        nice++;
+                                }
+                                else
+                                {
+					param->sched_priority=0;
+					sched_setscheduler(kvm_task, SCHED_NORMAL, param);
+                                        while_each_thread(kvm_task,t)
+                                        {
+                                                if(t)
+                                                        sched_setscheduler(t, SCHED_NORMAL, param);
+                                        }
+                                }
+			}
+			else
+			{}
 		}
         	vhost_table_clean_io_all();
-		msleep(1000);
+		msleep(400);
 	}
 	return 0;
 }
@@ -313,12 +346,29 @@ static int boosting(struct seq_file *m, void *v)
 	}	
 	return 0;
 }
+static int fifoosting(struct seq_file *m, void *v)
+{
+	if(fifo==0)
+        {
+                fifo=1;
+                seq_printf(m,"fifo is %d, fifo disable\n",control);
+        }
+        else
+        {
+                fifo=0;
+                seq_printf(m,"fifo is %d, fifo enable\n",control);
+        }
+        return 0;
+}
+
 static int __init proc_cmdline_init(void)
 {
 	struct task_struct *tsk;
-	control=0;
+	control=1;
+	fifo =1;
 	open=0;
 	hash_init(vtbl);
+	param=(struct sched_param*)kmalloc(sizeof(struct sched_param),GFP_KERNEL);
 	kvm_list=(struct kvm_io*)kmalloc(sizeof(struct kvm_io),GFP_KERNEL);
 	INIT_LIST_HEAD(&kvm_list->node);
 	tsk=kthread_run(io_boosting, NULL, "Huawei_Boosting");
@@ -331,6 +381,7 @@ static int __init proc_cmdline_init(void)
 	proc_create_single("fake_add",0,NULL,fake_add);
 	proc_create_single("hash_print",0,NULL,hash_print);
 	proc_create_single("kvm_boosting",0,NULL,boosting);
+	proc_create_single("kvm_fifo",0,NULL,fifoosting);
         return 0;
 }
 fs_initcall(proc_cmdline_init);
