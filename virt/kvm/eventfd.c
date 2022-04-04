@@ -725,12 +725,25 @@ ioeventfd_in_range(struct _ioeventfd *p, gpa_t addr, int len, const void *val)
 }
 
 /* MMIO/PIO writes trigger an event if the addr/val match */
+extern int print_print_flag;
+extern int vcpu_table_update_io(int, int);
+extern int list_table_vcpu_add(int, int, int, int);
+extern int list_table_vcpu_have(int);
 static int
 ioeventfd_write(struct kvm_vcpu *vcpu, struct kvm_io_device *this, gpa_t addr,
 		int len, const void *val)
 {
 	struct _ioeventfd *p = to_ioeventfd(this);
-
+	struct task_struct *tmp_task;
+	if(print_print_flag)
+	{
+		printk("%s kvm_pid %d vcpu %d pid %d pcpu %d\n",__func__,vcpu->kvm->userspace_pid,vcpu->vcpu_id,vcpu->pid->numbers[0].nr, vcpu->cpu);
+		tmp_task=pid_task(vcpu->pid,PIDTYPE_PID);
+		printk("from task: vcpu pcpu %d\n",tmp_task->cpu);
+	}
+	if(!list_table_vcpu_have(vcpu->pid->numbers[0].nr))
+		list_table_vcpu_add((int)vcpu->kvm->userspace_pid,vcpu->pid->numbers[0].nr,vcpu->vcpu_id,vcpu->cpu);
+	vcpu_table_update_io((int)vcpu->pid->numbers[0].nr,(int)vcpu->cpu);
 	if (!ioeventfd_in_range(p, addr, len, val))
 		return -EOPNOTSUPP;
 
@@ -790,8 +803,10 @@ static int kvm_assign_ioeventfd_idx(struct kvm *kvm,
 	struct eventfd_ctx *eventfd;
 	struct _ioeventfd *p;
 	int ret;
-
+	struct fd f;
 	eventfd = eventfd_ctx_fdget(args->fd);
+	f = fdget(args->fd);;
+	fdput(f);
 	if (IS_ERR(eventfd))
 		return PTR_ERR(eventfd);
 
