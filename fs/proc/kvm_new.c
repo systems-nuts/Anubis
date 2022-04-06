@@ -125,9 +125,26 @@ static int vcpu_sort(struct seq_file *m, void *v)
 	list_for_each(pos,&vcpu_list->lnode)
         {
                 entry=list_entry(pos,struct vcpu_io, lnode);
-                seq_printf(m,"kvm %d vcpu %d vcpu_pid %d pcpu %d io %lu\n",entry->kvm_pid,entry->vcpu_id,entry->vcpu_pid,entry->vcpu_running_at,entry->eventfd_time);
+                seq_printf(m,"kvm %d vcpu %d vcpu_pid %d pcpu %d io %lu \n",entry->kvm_pid,entry->vcpu_id,entry->vcpu_pid,entry->vcpu_running_at,entry->eventfd_time);
         }
 	return 0;
+
+}
+
+static int vcpu_io_sort(struct seq_file *m, void *v)
+{
+        struct list_head *pos;
+        struct vcpu_io *entry;
+        int vcpu_pid;
+        list_sort(NULL,&vcpu_list->lnode,vcpu_io_comp);
+
+        list_for_each(pos,&vcpu_list->lnode)
+        {
+                entry=list_entry(pos,struct vcpu_io, lnode);
+		if(entry->eventfd_time!=0)
+                seq_printf(m,"vcpu %d io %lu \n",entry->vcpu_pid,entry->eventfd_time);
+        }
+        return 0;
 
 }
 static int vcpu_list_show(struct seq_file *m, void *v)
@@ -137,7 +154,7 @@ static int vcpu_list_show(struct seq_file *m, void *v)
 	list_for_each(pos,&vcpu_list->lnode)
         {
                 entry=list_entry(pos,struct vcpu_io, lnode);
-		seq_printf(m,"kvm %d vcpu %d vcpu_pid %d pcpu %d io %lu\n",entry->kvm_pid,entry->vcpu_id,entry->vcpu_pid,entry->vcpu_running_at,entry->eventfd_time);
+		seq_printf(m,"kvm %d vcpu %d vcpu_pid %d pcpu %d io %lu \n",entry->kvm_pid,entry->vcpu_id,entry->vcpu_pid,entry->vcpu_running_at,entry->eventfd_time);
         }
         return 0;
 }
@@ -179,6 +196,36 @@ static int vcpu_boosting(struct seq_file *m, void *v)
         return 0;
 }
 
+int boost_flag =0;
+EXPORT_SYMBOL(boost_flag);
+static int cfs_boost(struct seq_file *m, void *v)
+{
+        if(boost_flag)
+                boost_flag=0;
+        else
+                boost_flag=1;
+        seq_printf(m, "boost_flag %d\n",boost_flag);
+        return 0;
+}
+
+int check_cpu_boosting(int cpu)
+{
+	struct list_head *pos;
+        struct vcpu_io *entry;
+        list_for_each(pos,&vcpu_list->lnode)
+        {
+                entry=list_entry(pos,struct vcpu_io, lnode);
+		//if there is IO in 1 sec 
+                if(entry->eventfd_time!=0)
+			if(entry->vcpu_running_at == cpu)
+				return 1;
+			
+        }
+        return 0;
+
+}
+EXPORT_SYMBOL(check_cpu_boosting);
+
 
 static int __init proc_cmdline_init(void)
 {
@@ -194,6 +241,9 @@ static int __init proc_cmdline_init(void)
 	proc_create_single("vcpu_fake_add",0,NULL,vcpu_fake_add);
 	proc_create_single("vcpu_list_show",0,NULL,vcpu_list_show);
 	proc_create_single("vcpu_boosting_control",0,NULL,vcpu_boosting);
+	proc_create_single("vcpu_io",0,NULL,vcpu_io_sort);
+	proc_create_single("cfs_boost", 0, NULL, cfs_boost);
+
         return 0;
 }
 fs_initcall(proc_cmdline_init);
