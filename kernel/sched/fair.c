@@ -4388,8 +4388,9 @@ dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
  * Preempt the current task with a newly woken task if needed:
  */
 //Huawei boosting 
-extern int boost_flag;
+extern int cfs_boost_flag;
 extern int check_cpu_boosting(int);
+extern int cfs_print_flag;
 static void
 check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 {
@@ -4400,7 +4401,10 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	ideal_runtime = sched_slice(cfs_rq, curr);
 	delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
 
-	if(boost_flag && check_cpu_boosting(cfs_rq->rq->cpu))
+//	if(cfs_print_flag && cfs_rq->rq->cpu == 3)
+//		printk("cpu %d ideal_runtime %lu delta_exec %lu sysctl_sched_min_granularity %lu \n",cfs_rq->rq->cpu, ideal_runtime, delta_exec, sysctl_sched_min_granularity);
+
+	if(cfs_boost_flag && check_cpu_boosting(cfs_rq->rq->cpu))
         {
                 resched_curr(rq_of(cfs_rq));
                 /*
@@ -4408,7 +4412,6 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
                  */
                 clear_buddies(cfs_rq, curr);
                 return;
-
         }
 
 
@@ -11439,3 +11442,42 @@ int sched_trace_rq_nr_running(struct rq *rq)
         return rq ? rq->nr_running : -1;
 }
 EXPORT_SYMBOL_GPL(sched_trace_rq_nr_running);
+
+
+//TONG for Huawei
+int sched_check_task_is_running(struct task_struct *tsk)
+{
+	struct cfs_rq *rq;
+	struct task_struct *curr;
+	rq = task_cfs_rq(tsk);
+	if(!rq)
+	{
+		printk("%s rq error\n",__func__);
+		return 0;
+	}
+	curr = task_of(rq->curr);
+	if(!curr)
+        {
+                printk("%s curr error\n",__func__);
+                return 0;
+        }
+
+	if(curr->pid == tsk->pid)
+		return 1;
+	else
+		return 0;
+
+}
+EXPORT_SYMBOL_GPL(sched_check_task_is_running);
+void sched_force_schedule(struct task_struct *tsk)
+{
+	struct cfs_rq *rq;
+	printk("current running is not IRQ vcpu %s %d, it will be resched\n",tsk->comm, tsk->pid);
+	rq = task_cfs_rq(tsk);
+	resched_curr(rq_of(rq));
+	clear_buddies(rq, rq->curr);
+}
+EXPORT_SYMBOL_GPL(sched_force_schedule);
+
+
+

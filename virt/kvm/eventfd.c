@@ -27,7 +27,6 @@
 #include <trace/events/kvm.h>
 
 #include <kvm/iodev.h>
-
 #ifdef CONFIG_HAVE_KVM_IRQFD
 
 static struct workqueue_struct *irqfd_cleanup_wq;
@@ -723,9 +722,9 @@ ioeventfd_in_range(struct _ioeventfd *p, gpa_t addr, int len, const void *val)
 
 	return _val == p->datamatch;
 }
-
-/* MMIO/PIO writes trigger an event if the addr/val match */
-extern int print_print_flag;
+//TONG
+extern void  eventfd_id(struct eventfd_ctx *ctx);
+//extern int print_print_flag;
 extern int vcpu_table_update_io(int, int);
 extern int list_table_vcpu_add(int, int, int, int);
 extern int list_table_vcpu_have(int);
@@ -734,18 +733,19 @@ ioeventfd_write(struct kvm_vcpu *vcpu, struct kvm_io_device *this, gpa_t addr,
 		int len, const void *val)
 {
 	struct _ioeventfd *p = to_ioeventfd(this);
-	struct task_struct *tmp_task;
+	/*
 	if(print_print_flag)
 	{
 		printk("%s kvm_pid %d vcpu %d pid %d pcpu %d\n",__func__,vcpu->kvm->userspace_pid,vcpu->vcpu_id,vcpu->pid->numbers[0].nr, vcpu->cpu);
-		tmp_task=pid_task(vcpu->pid,PIDTYPE_PID);
-		printk("from task: vcpu pcpu %d\n",tmp_task->cpu);
+		eventfd_id(p->eventfd);
 	}
+	*/
 	if(!list_table_vcpu_have(vcpu->pid->numbers[0].nr))
 		list_table_vcpu_add((int)vcpu->kvm->userspace_pid,vcpu->pid->numbers[0].nr,vcpu->vcpu_id,vcpu->cpu);
 	vcpu_table_update_io((int)vcpu->pid->numbers[0].nr,(int)vcpu->cpu);
 	if (!ioeventfd_in_range(p, addr, len, val))
 		return -EOPNOTSUPP;
+	trace_kvm_ioevent_irq(vcpu->pid->numbers[0].nr);
 
 	eventfd_signal(p->eventfd, 1);
 	return 0;
@@ -804,7 +804,13 @@ static int kvm_assign_ioeventfd_idx(struct kvm *kvm,
 	struct _ioeventfd *p;
 	int ret;
 	struct fd f;
+	struct file *myfile;
 	eventfd = eventfd_ctx_fdget(args->fd);
+	myfile = eventfd_fget(args->fd);
+	if(myfile)
+		printk("%s file name %s\n",__func__,myfile->f_path.dentry->d_iname);
+	else
+		printk("%s problem'\n",__func__);
 	f = fdget(args->fd);;
 	fdput(f);
 	if (IS_ERR(eventfd))

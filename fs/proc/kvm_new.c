@@ -23,12 +23,74 @@ int list_table_vcpu_add(int pid1, int pid2, int id, int cpu)
 	entry->vcpu_pid=pid2;
 	entry->eventfd_time=0;
 	entry->vcpu_running_at=cpu;
+	entry->vhost_pid=0;
 	hash_add(vvtbl,&entry->hnode,entry->vcpu_pid);
 	list_add(&entry->lnode,&vcpu_list->lnode);
 	printk("kvm pid %d vcpu id %d pid %d\n",entry->kvm_pid,entry->vcpu_id,entry->vcpu_pid);
 	return 0;
 }
 EXPORT_SYMBOL(list_table_vcpu_add);
+
+extern int sched_check_task_is_running(struct task_struct *tsk);
+extern void sched_force_schedule(struct task_struct *tsk);
+void boost_IRQ_vcpu(int vcpu_pid)
+{
+	//vhost_pid + vcpu_id => vcpu_io
+	printk("%s %d\n",__func__,vcpu_pid);
+	struct list_head *pos;
+        struct vcpu_io *entry;
+	struct task_struct *IRQ_vcpu;
+        list_for_each(pos,&vcpu_list->lnode)
+        {
+                entry=list_entry(pos,struct vcpu_io, lnode);
+                if(entry->vcpu_pid == vcpu_pid)
+                {	
+			IRQ_vcpu = find_get_task_by_vpid(entry->vcpu_pid);
+			if(!IRQ_vcpu)
+				printk("wtf\n");
+			else
+				printk("\nfind kvm %d IRQ vcpu %s %d\n", entry->kvm_pid, IRQ_vcpu->comm, IRQ_vcpu->pid);
+		}
+        }
+	//current running task
+	if(!IRQ_vcpu)
+		return;
+		
+	if(sched_check_task_is_running(IRQ_vcpu)) //if current running is IRQ_vcpu
+	{
+		printk("heihei?\n");
+		printk("current running is IRQ vcpu %s %d, it has run %lld, we let it run 2ms more %lld\n ",IRQ_vcpu->comm, IRQ_vcpu->pid, IRQ_vcpu->se.sum_exec_runtime-IRQ_vcpu->se.prev_sum_exec_runtime, IRQ_vcpu->se.sum_exec_runtime-IRQ_vcpu->se.prev_sum_exec_runtime-750000ULL);
+		IRQ_vcpu->se.sum_exec_runtime -= 750000ULL; // we let it run 2ms more
+	}
+	else
+	{
+		printk("haha?\n");
+		sched_force_schedule(IRQ_vcpu);
+	}
+	//if vcpu_io is running. curr->sum_exec_runtime = curr->prev_sum_exec_runtime;
+	//else
+	//vcpu_io -> others vcpu in this pcpu, set_tsk_thread_flag(tsk,TIF_NEED_RESCHED);
+	
+}
+EXPORT_SYMBOL(boost_IRQ_vcpu);
+//add vhost pid to each vcpu structure 
+int list_table_update_vhost_pid(int vhost_pid, int kvm_pid)
+{
+        struct list_head *pos;
+        struct vcpu_io *entry;
+        int vcpu_pid;
+
+        list_for_each(pos,&vcpu_list->lnode)
+        {
+                entry=list_entry(pos,struct vcpu_io, lnode);
+		if(entry->kvm_pid == kvm_pid)
+			entry->vhost_pid = vhost_pid;
+        }
+        return 0;
+
+}
+EXPORT_SYMBOL(list_table_update_vhost_pid);
+
 int list_table_vcpu_have(int pid)
 {
 	struct vcpu_io *cur;
@@ -176,7 +238,7 @@ static int vcpu_fake_add(struct seq_file *m, void *v)
 	printk("done\n");
         return 0;
 }
-static int sleep_time=200;
+static int sleep_time=500;
 static int vcpu_boosting_worker(void *arg0)
 
 {
@@ -196,15 +258,28 @@ static int vcpu_boosting(struct seq_file *m, void *v)
         return 0;
 }
 
-int boost_flag =0;
-EXPORT_SYMBOL(boost_flag);
+int cfs_boost_flag =0;
+int cfs_print_flag =0;
+
+EXPORT_SYMBOL(cfs_boost_flag);
+EXPORT_SYMBOL(cfs_print_flag);
+
 static int cfs_boost(struct seq_file *m, void *v)
 {
-        if(boost_flag)
-                boost_flag=0;
+        if(cfs_boost_flag)
+                cfs_boost_flag=0;
         else
-                boost_flag=1;
-        seq_printf(m, "boost_flag %d\n",boost_flag);
+                cfs_boost_flag=1;
+        seq_printf(m, "cfs_boost_flag %d\n",cfs_boost_flag);
+        return 0;
+}
+static int cfs_print(struct seq_file *m, void *v)
+{
+        if(cfs_print_flag)
+                cfs_print_flag=0;
+        else
+                cfs_print_flag=1;
+        seq_printf(m, "cfs_print_flag %d\n",cfs_print_flag);
         return 0;
 }
 
@@ -227,6 +302,64 @@ int check_cpu_boosting(int cpu)
 EXPORT_SYMBOL(check_cpu_boosting);
 
 
+int ctx_sw_flag =0;
+static int cfs_ctx_sw_flag(struct seq_file *m, void *v)
+{
+        if(ctx_sw_flag)
+                ctx_sw_flag=0;
+        else
+                ctx_sw_flag=1;
+        seq_printf(m, "ctx_sw_flag %d\n",ctx_sw_flag);
+        return 0;
+}
+static unsigned long long record_min =-1; 
+static unsigned long long record_max =0;
+static unsigned long long record_exit =-1;
+static long counter=0;
+static unsigned long long total_ctx=0;
+static unsigned long long record;
+void cfs_record_run(void)
+{
+	
+	if(rdtsc() < record_exit)
+		return;
+	record = rdtsc() - record_exit;
+	if (record_min > record)
+		record_min=record;
+	if (record_max < record)
+		record_max=record;
+	total_ctx+=record;
+	counter++;
+}
+
+static int cfs_ctx_sw_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "ctx_sw_flag %d\n",ctx_sw_flag);
+	seq_printf(m, "MAX %lld MIN %lld\n",record_max, record_min);
+	seq_printf(m, "Count %ld TOTAL %lld\n",counter,total_ctx);
+	return 0;
+}
+static int cfs_ctx_sw_refresh(struct seq_file *m, void *v)
+{
+	record_min=-1;
+	record_max=0;
+	record_exit=-1;
+	total_ctx=0;
+	counter=0;
+	return 0;
+}
+
+
+void cfs_record_exit(void)
+{
+	record_exit=rdtsc();
+}
+EXPORT_SYMBOL(ctx_sw_flag);
+EXPORT_SYMBOL(cfs_record_exit);
+EXPORT_SYMBOL(cfs_record_run);
+
+
+
 static int __init proc_cmdline_init(void)
 {
 	struct task_struct *tsk;
@@ -243,6 +376,12 @@ static int __init proc_cmdline_init(void)
 	proc_create_single("vcpu_boosting_control",0,NULL,vcpu_boosting);
 	proc_create_single("vcpu_io",0,NULL,vcpu_io_sort);
 	proc_create_single("cfs_boost", 0, NULL, cfs_boost);
+	proc_create_single("cfs_print", 0, NULL, cfs_print);
+	proc_create_single("cfs_ctx_sw", 0, NULL, cfs_ctx_sw_flag);
+	proc_create_single("cfs_ctx_show", 0, NULL, cfs_ctx_sw_show);
+	proc_create_single("cfs_ctx_refresh", 0, NULL, cfs_ctx_sw_refresh);
+
+
 
         return 0;
 }

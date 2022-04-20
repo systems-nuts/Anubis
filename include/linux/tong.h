@@ -38,6 +38,7 @@ struct vcpu_io{
 	int vcpu_id;
 	int vcpu_pid;
 	int vcpu_running_at;
+	int vhost_pid;
 	unsigned long eventfd_time;
 	struct hlist_node hnode;
 	struct list_head lnode;
