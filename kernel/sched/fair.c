@@ -4415,8 +4415,8 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
         }
 
 
-
 	if (delta_exec > ideal_runtime) {
+		trace_sched_check_tsk(100);
 		resched_curr(rq_of(cfs_rq));
 		/*
 		 * The current task ran long enough, ensure it doesn't get
@@ -4432,8 +4432,10 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	 * This also mitigates buddy induced latencies under load.
 	 */
 	if (delta_exec < sysctl_sched_min_granularity)
+	{
+		trace_sched_check_tsk(200);
 		return;
-
+	}
 
 
 
@@ -4442,10 +4444,16 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	delta = curr->vruntime - se->vruntime;
 
 	if (delta < 0)
+	{
+		trace_sched_check_tsk(300);
 		return;
+	}
 
 	if (delta > ideal_runtime)
+	{
+		trace_sched_check_tsk(400);
 		resched_curr(rq_of(cfs_rq));
+	}
 }
 
 static void
@@ -11449,35 +11457,113 @@ int sched_check_task_is_running(struct task_struct *tsk)
 {
 	struct cfs_rq *rq;
 	struct task_struct *curr;
-	rq = task_cfs_rq(tsk);
+	struct sched_entity *se = &tsk->se;
+	if(!entity_is_task(se))
+	{
+		return 0;
+	}
+	rq = cfs_rq_of(se);
 	if(!rq)
 	{
-		printk("%s rq error\n",__func__);
 		return 0;
+	}
+	se = rq->curr;
+	if(!se)
+	{
+		trace_sched_check_tsk(3);
+		return 0;
+	}
+	if(!entity_is_task(se))
+	{
+                return 0;
 	}
 	curr = task_of(rq->curr);
 	if(!curr)
-        {
-                printk("%s curr error\n",__func__);
+	{
                 return 0;
-        }
-
+	}
 	if(curr->pid == tsk->pid)
+	{
 		return 1;
+	}
 	else
+	{
 		return 0;
+	}
 
 }
 EXPORT_SYMBOL_GPL(sched_check_task_is_running);
-void sched_force_schedule(struct task_struct *tsk)
+void sched_force_schedule(struct task_struct *tsk, int clear_flag)
 {
-	struct cfs_rq *rq;
-	printk("current running is not IRQ vcpu %s %d, it will be resched\n",tsk->comm, tsk->pid);
-	rq = task_cfs_rq(tsk);
-	resched_curr(rq_of(rq));
-	clear_buddies(rq, rq->curr);
+	struct cfs_rq *cfs_rq;
+	struct task_struct *poor_guy;
+	struct sched_entity *poor_se, *lucky_se;
+	struct rq *rq;
+	cfs_rq = task_cfs_rq(tsk);
+	rq = rq_of(cfs_rq);
+	poor_guy = rq->curr;
+	lucky_se = &tsk->se;
+	if(poor_guy)
+	{
+		poor_se= &poor_guy->se;
+	}
+	trace_sched_force_sched(111,clear_flag);
+	yield_to_task_fair(rq,tsk);
+	resched_curr(rq);
+	/*
+	if(poor_se)
+	{
+		trace_sched_force_sched(999,clear_flag);
+		poor_se->exec_start -= 10000000ULL;
+		poor_se->sum_exec_runtime+= 10000000ULL;
+		poor_se->vruntime+= 100000000ULL;
+		update_curr(cfs_rq);
+	        update_load_avg(cfs_rq, poor_se, UPDATE_TG);
+	        update_cfs_group(poor_se);
+	}
+	else
+		trace_sched_force_sched(111,clear_flag);
+
+	resched_curr(rq);
+
+	//if(clear_flag)
+	clear_buddies(cfs_rq,&tsk->se);
+	*/
 }
 EXPORT_SYMBOL_GPL(sched_force_schedule);
+
+void sched_extend_life(struct task_struct *tsk)
+{
+	struct cfs_rq *rq;
+	struct sched_entity *curr;
+	unsigned long ideal_runtime, delta_exec;
+	rq = task_cfs_rq(tsk);
+	curr = &tsk->se;
+	trace_sched_extend_life(1);
+	yield_to_task_fair(rq_of(rq),tsk);
+	/*
+	curr->vruntime -= 5000000ULL;
+	curr->sum_exec_runtime = curr->prev_sum_exec_runtime;
+	curr->exec_start = rq_clock_task(rq_of(rq));
+	clear_tsk_need_resched(tsk);
+	update_curr(rq);
+	update_load_avg(rq, curr, UPDATE_TG);
+        update_cfs_group(curr);
+	*/
+}
+EXPORT_SYMBOL_GPL(sched_extend_life);
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

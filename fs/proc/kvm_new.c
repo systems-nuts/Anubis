@@ -13,6 +13,7 @@
 #include <linux/types.h>
 DECLARE_HASHTABLE(vvtbl,10);
 static struct vcpu_io *vcpu_list;
+static int booster_pid;
 static int control;
 int list_table_vcpu_add(int pid1, int pid2, int id, int cpu)
 {
@@ -23,7 +24,7 @@ int list_table_vcpu_add(int pid1, int pid2, int id, int cpu)
 	entry->vcpu_pid=pid2;
 	entry->eventfd_time=0;
 	entry->vcpu_running_at=cpu;
-	entry->vhost_pid=0;
+	entry->IRQ_vcpu_pid=0;
 	hash_add(vvtbl,&entry->hnode,entry->vcpu_pid);
 	list_add(&entry->lnode,&vcpu_list->lnode);
 	printk("kvm pid %d vcpu id %d pid %d\n",entry->kvm_pid,entry->vcpu_id,entry->vcpu_pid);
@@ -32,11 +33,54 @@ int list_table_vcpu_add(int pid1, int pid2, int id, int cpu)
 EXPORT_SYMBOL(list_table_vcpu_add);
 
 extern int sched_check_task_is_running(struct task_struct *tsk);
-extern void sched_force_schedule(struct task_struct *tsk);
+extern void sched_force_schedule(struct task_struct *tsk, int clear_flag);
+extern void sched_extend_life(struct task_struct *tsk);
+
+void boost_IO_vcpu(int vcpu_pid, int dest_id)
+{
+	if(vcpu_pid!=booster_pid)
+		return;
+	struct list_head *pos;
+        struct vcpu_io *entry;
+        struct task_struct *IO_vcpu;
+	int curr_kvm;
+        list_for_each(pos,&vcpu_list->lnode)
+        {
+                entry=list_entry(pos,struct vcpu_io, lnode);
+                if(entry->vcpu_pid == vcpu_pid)
+                {
+                        curr_kvm = entry->kvm_pid;
+                }
+        }
+	list_for_each(pos,&vcpu_list->lnode)
+        {
+                entry=list_entry(pos,struct vcpu_io, lnode);
+                if(entry->kvm_pid == curr_kvm && entry->vcpu_id == dest_id)
+                {
+                        IO_vcpu = find_get_task_by_vpid(entry->vcpu_pid);
+                }
+        }
+
+	if(!IO_vcpu)
+                return;
+
+        if(sched_check_task_is_running(IO_vcpu)) //if current running is IRQ_vcpu
+	{
+		sched_extend_life(IO_vcpu);
+	}
+	else
+        {
+                sched_force_schedule(IO_vcpu,1);
+        }
+
+}
+EXPORT_SYMBOL(boost_IO_vcpu);
+
 void boost_IRQ_vcpu(int vcpu_pid)
 {
+	booster_pid = vcpu_pid;
 	//vhost_pid + vcpu_id => vcpu_io
-	printk("%s %d\n",__func__,vcpu_pid);
+//	printk("%s %d\n",__func__,vcpu_pid);
 	struct list_head *pos;
         struct vcpu_io *entry;
 	struct task_struct *IRQ_vcpu;
@@ -46,10 +90,6 @@ void boost_IRQ_vcpu(int vcpu_pid)
                 if(entry->vcpu_pid == vcpu_pid)
                 {	
 			IRQ_vcpu = find_get_task_by_vpid(entry->vcpu_pid);
-			if(!IRQ_vcpu)
-				printk("wtf\n");
-			else
-				printk("\nfind kvm %d IRQ vcpu %s %d\n", entry->kvm_pid, IRQ_vcpu->comm, IRQ_vcpu->pid);
 		}
         }
 	//current running task
@@ -57,15 +97,13 @@ void boost_IRQ_vcpu(int vcpu_pid)
 		return;
 		
 	if(sched_check_task_is_running(IRQ_vcpu)) //if current running is IRQ_vcpu
+        {
+                sched_extend_life(IRQ_vcpu);
+        }
+        else
 	{
-		printk("heihei?\n");
-		printk("current running is IRQ vcpu %s %d, it has run %lld, we let it run 2ms more %lld\n ",IRQ_vcpu->comm, IRQ_vcpu->pid, IRQ_vcpu->se.sum_exec_runtime-IRQ_vcpu->se.prev_sum_exec_runtime, IRQ_vcpu->se.sum_exec_runtime-IRQ_vcpu->se.prev_sum_exec_runtime-750000ULL);
-		IRQ_vcpu->se.sum_exec_runtime -= 750000ULL; // we let it run 2ms more
-	}
-	else
-	{
-		printk("haha?\n");
-		sched_force_schedule(IRQ_vcpu);
+	//	printk("running others\n");
+		sched_force_schedule(IRQ_vcpu,0);
 	}
 	//if vcpu_io is running. curr->sum_exec_runtime = curr->prev_sum_exec_runtime;
 	//else
@@ -74,6 +112,7 @@ void boost_IRQ_vcpu(int vcpu_pid)
 }
 EXPORT_SYMBOL(boost_IRQ_vcpu);
 //add vhost pid to each vcpu structure 
+/*
 int list_table_update_vhost_pid(int vhost_pid, int kvm_pid)
 {
         struct list_head *pos;
@@ -90,7 +129,7 @@ int list_table_update_vhost_pid(int vhost_pid, int kvm_pid)
 
 }
 EXPORT_SYMBOL(list_table_update_vhost_pid);
-
+*/
 int list_table_vcpu_have(int pid)
 {
 	struct vcpu_io *cur;
