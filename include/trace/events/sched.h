@@ -31,6 +31,58 @@ TRACE_EVENT(sched_kthread_stop,
 	TP_printk("comm=%s pid=%d", __entry->comm, __entry->pid)
 );
 
+TRACE_EVENT(sched_force_sched,
+
+        TP_PROTO(int cpu, int ret),
+
+        TP_ARGS(cpu, ret),
+
+        TP_STRUCT__entry(
+		__field(	int,	cpu	)
+                __field(        int,    ret     )
+        ),
+
+        TP_fast_assign(
+		__entry->cpu	= cpu;
+                __entry->ret    = ret;
+        ),
+
+        TP_printk("cpu %d clear %d",__entry->cpu, __entry->ret)
+);
+TRACE_EVENT(sched_check_tsk,
+
+        TP_PROTO(int ret),
+
+        TP_ARGS(ret),
+
+        TP_STRUCT__entry(
+                __field(        int,    ret     )
+        ),
+
+        TP_fast_assign(
+                __entry->ret    = ret;
+        ),
+
+        TP_printk("ret %d", __entry->ret)
+);
+TRACE_EVENT(sched_extend_life,
+
+        TP_PROTO(int ret),
+
+        TP_ARGS(ret),
+
+        TP_STRUCT__entry(
+                __field(        int,    ret     )
+        ),
+
+        TP_fast_assign(
+                __entry->ret    = ret;
+        ),
+
+        TP_printk("extend %d", __entry->ret)
+);
+
+
 /*
  * Tracepoint for the return value of the kthread stopping:
  */
