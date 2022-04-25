@@ -46,6 +46,13 @@
 #include "lapic.h"
 #include "irq.h"
 
+
+
+#if 0
+#define ioapic_debug(fmt,arg...) printk(KERN_WARNING fmt,##arg)
+#else
+#define ioapic_debug(fmt, arg...)
+#endif
 static int ioapic_service(struct kvm_ioapic *vioapic, int irq,
 		bool line_status);
 
@@ -420,6 +427,13 @@ static int ioapic_service(struct kvm_ioapic *ioapic, int irq, bool line_status)
 	    (entry->fields.trig_mode == IOAPIC_LEVEL_TRIG &&
 	    entry->fields.remote_irr))
 		return -1;
+
+	ioapic_debug("dest=%x dest_mode=%x delivery_mode=%x "
+		     "vector=%x trig_mode=%x\n",
+		     entry->fields.dest_id, entry->fields.dest_mode,
+		     entry->fields.delivery_mode, entry->fields.vector,
+		     entry->fields.trig_mode);
+
 
 	irqe.dest_id = entry->fields.dest_id;
 	irqe.vector = entry->fields.vector;

@@ -196,6 +196,32 @@ static int kvm_sort(struct seq_file *m, void *v)
 
 }
 
+static int kvm_list_for_cgroup(struct seq_file *m, void *v)
+{
+        struct list_head *pos;
+        struct kvm_io *entry;
+        struct vhost_table *cur;
+        int vhost_pid;
+        list_for_each(pos,&kvm_list->node)
+        {
+                entry=list_entry(pos,struct kvm_io, node);
+                vhost_pid=entry->vhost_pid;
+                hash_for_each_possible(vtbl,cur,node,vhost_pid)
+                {
+                        entry->net_io = cur->net_io_read+cur->net_io_write;
+                }
+        }
+        list_sort(NULL,&kvm_list->node,kvm_io_comp);
+
+        list_for_each(pos,&kvm_list->node)
+        {
+                entry=list_entry(pos,struct kvm_io, node);
+		seq_printf(m,"%d\n",entry->kvm_pid);
+        }
+        return 0;
+
+}
+
 static int read_all(struct seq_file *m, void *v)
 {
 	unsigned bkt;
@@ -360,7 +386,64 @@ static int fifoosting(struct seq_file *m, void *v)
         }
         return 0;
 }
-
+int print_print_flag=0,record_flag=0,print_flag=0,the_choosen_pid=0;
+unsigned long total_process_time=0,total_process_number=0;
+EXPORT_SYMBOL(record_flag);
+EXPORT_SYMBOL(print_flag);
+EXPORT_SYMBOL(total_process_time);
+EXPORT_SYMBOL(total_process_number);
+EXPORT_SYMBOL(print_print_flag);
+static int kvm_print_flag(struct seq_file *m, void *v)
+{
+        if(print_print_flag==0)
+        {
+                print_print_flag=1;
+                seq_printf(m,"eventfd %d, enable\n",print_print_flag);
+        }
+        else
+        {
+		print_print_flag=0;
+                seq_printf(m,"eventfd %d, disable\n",print_print_flag);
+        }
+        return 0;
+}
+static int my_print_flag(struct seq_file *m, void *v)
+{
+        if(print_flag==0)
+        {
+                print_flag=1;
+                seq_printf(m,"printflag %d, enable\n",print_flag);
+        }
+        else
+        {
+                print_flag=0;
+                seq_printf(m,"printflag is %d, disable\n",print_flag);
+        }
+        return 0;
+}
+static int my_record_flag(struct seq_file *m, void *v)
+{
+	if(record_flag==0)
+        {
+                record_flag=1;
+                seq_printf(m,"recordflag %d, enable\n",record_flag);
+        }
+        else
+        {
+                record_flag=0;
+                seq_printf(m,"recordflag is %d, disable\n",record_flag);
+        }
+        return 0;
+}
+static int choosen_pid(struct seq_file *m, void *v)
+{
+	return 0;
+}
+static int vhost_result(struct seq_file *m, void *v)
+{
+	seq_printf(m,"result %lu/%lu=%lu\n",total_process_time,total_process_number,total_process_time/total_process_number);
+	return 0;
+}
 static int __init proc_cmdline_init(void)
 {
 	struct task_struct *tsk;
@@ -375,13 +458,18 @@ static int __init proc_cmdline_init(void)
 	if (IS_ERR(tsk)) {
                 printk(KERN_ERR "Cannot create KVM_IO, %ld\n", PTR_ERR(tsk));
         }
-
+	proc_create_single("kvm_list",0,NULL,kvm_list_for_cgroup);
 	proc_create_single("list_sort",0,NULL,kvm_sort);
 	proc_create_single("hash_all",0,NULL,read_all);
 	proc_create_single("fake_add",0,NULL,fake_add);
 	proc_create_single("hash_print",0,NULL,hash_print);
 	proc_create_single("kvm_boosting",0,NULL,boosting);
 	proc_create_single("kvm_fifo",0,NULL,fifoosting);
+	proc_create_single("vhost_print",0,NULL,my_print_flag);
+	proc_create_single("kvm_eventfd_print",0,NULL,kvm_print_flag);
+	proc_create_single("vhost_record",0,NULL,my_record_flag);
+	proc_create_single("vhost_choosen_pid",0,NULL,choosen_pid);
+	proc_create_single("vhost_result",0,NULL,vhost_result);
         return 0;
 }
 fs_initcall(proc_cmdline_init);

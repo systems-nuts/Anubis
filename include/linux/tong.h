@@ -33,6 +33,16 @@ struct kvm_io{
 	unsigned long net_io;
 	struct list_head node;
 };
+struct vcpu_io{
+	int kvm_pid;
+	int vcpu_id;
+	int vcpu_pid;
+	int vcpu_running_at;
+	int vhost_pid;
+	unsigned long eventfd_time;
+	struct hlist_node hnode;
+	struct list_head lnode;
+};
 /*
 static inline void clean_io_data(struct vhost_table *kv_table)
 {

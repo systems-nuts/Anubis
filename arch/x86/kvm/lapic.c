@@ -1053,15 +1053,32 @@ bool kvm_intr_is_single_vcpu_fast(struct kvm *kvm, struct kvm_lapic_irq *irq,
  * Add a pending IRQ into lapic.
  * Return 1 if successfully added and 0 if discarded.
  */
+//TONG 
+//2022-04-19 UoE
+//Get the IRQ VCPU and IO VCPU
+//Boost the IRQ VCPU and IOVCPU once it scheduled. 
+//In lapic.c we only implement the tracer who is IRQ VCPU and who is IO VCPU
+//and also the IO VCPU booster.
+//In ioapic.c we implement the booster of IRQ, because IRQ VCPU run the accept_irq
+//function only when VCPU is running
+extern void boost_IRQ_vcpu(int);
+extern int cfs_print_flag;
 static int __apic_accept_irq(struct kvm_lapic *apic, int delivery_mode,
 			     int vector, int level, int trig_mode,
 			     struct dest_map *dest_map)
 {
 	int result = 0;
 	struct kvm_vcpu *vcpu = apic->vcpu;
-
-	trace_kvm_apic_accept_irq(vcpu->vcpu_id, delivery_mode,
-				  trig_mode, vector);
+	if(cfs_print_flag)
+	{
+		if(current->comm[0]=='v' &&current->comm[1]=='h')
+		{	
+		printk("%s %s %d %d \n",__func__,current->comm,current->pid,vcpu->pid->numbers[0].nr);
+		boost_IRQ_vcpu(vcpu->pid->numbers[0].nr);
+		trace_kvm_apic_accept_irq(vcpu->vcpu_id, delivery_mode,
+					  trig_mode, vector);
+		}
+	}
 	switch (delivery_mode) {
 	case APIC_DM_LOWEST:
 		vcpu->arch.apic_arb_prio++;
@@ -1283,8 +1300,11 @@ void kvm_apic_send_ipi(struct kvm_lapic *apic, u32 icr_low, u32 icr_high)
 		irq.dest_id = icr_high;
 	else
 		irq.dest_id = GET_APIC_DEST_FIELD(icr_high);
+	
+	if(cfs_print_flag)
+        //        printk("%s %s %d %d\n",__func__,current->comm,current->pid,irq.dest_id);
 
-	trace_kvm_apic_ipi(icr_low, irq.dest_id);
+		trace_kvm_apic_ipi(icr_low, irq.dest_id);
 
 	kvm_irq_delivery_to_apic(apic->vcpu->kvm, apic, &irq, NULL);
 }
