@@ -19,6 +19,23 @@
 	ERSN(SYSTEM_EVENT), ERSN(S390_STSI), ERSN(IOAPIC_EOI),          \
 	ERSN(HYPERV), ERSN(ARM_NISV), ERSN(X86_RDMSR), ERSN(X86_WRMSR)
 
+TRACE_EVENT(kvm_ioevent_irq,
+        TP_PROTO(unsigned int vcpu),
+        TP_ARGS(vcpu),
+
+        TP_STRUCT__entry(
+                __field(        unsigned int,   vcpu         )
+        ),
+
+        TP_fast_assign(
+                __entry->vcpu        = vcpu;
+        ),
+
+        TP_printk("ioevent vcpu %d",__entry->vcpu)
+);
+
+
+
 TRACE_EVENT(kvm_userspace_exit,
 	    TP_PROTO(__u32 reason, int errno),
 	    TP_ARGS(reason, errno),
@@ -398,6 +415,10 @@ TRACE_EVENT(kvm_halt_poll_ns,
 	trace_kvm_halt_poll_ns(true, vcpu_id, new, old)
 #define trace_kvm_halt_poll_ns_shrink(vcpu_id, new, old) \
 	trace_kvm_halt_poll_ns(false, vcpu_id, new, old)
+
+
+
+
 
 #endif /* _TRACE_KVM_MAIN_H */
 
