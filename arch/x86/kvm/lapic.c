@@ -1073,7 +1073,7 @@ static int __apic_accept_irq(struct kvm_lapic *apic, int delivery_mode,
 	{
 		if(current->comm[0]=='v' &&current->comm[1]=='h')
 		{	
-		printk("%s %s %d %d \n",__func__,current->comm,current->pid,vcpu->pid->numbers[0].nr);
+		//printk("%s %s %d %d \n",__func__,current->comm,current->pid,vcpu->pid->numbers[0].nr);
 		boost_IRQ_vcpu(vcpu->pid->numbers[0].nr);
 		trace_kvm_apic_accept_irq(vcpu->vcpu_id, delivery_mode,
 					  trig_mode, vector);
@@ -1285,6 +1285,9 @@ void kvm_apic_set_eoi_accelerated(struct kvm_vcpu *vcpu, int vector)
 }
 EXPORT_SYMBOL_GPL(kvm_apic_set_eoi_accelerated);
 
+
+extern void boost_IO_vcpu(int,int);
+
 void kvm_apic_send_ipi(struct kvm_lapic *apic, u32 icr_low, u32 icr_high)
 {
 	struct kvm_lapic_irq irq;
@@ -1302,10 +1305,10 @@ void kvm_apic_send_ipi(struct kvm_lapic *apic, u32 icr_low, u32 icr_high)
 		irq.dest_id = GET_APIC_DEST_FIELD(icr_high);
 	
 	if(cfs_print_flag)
-        //        printk("%s %s %d %d\n",__func__,current->comm,current->pid,irq.dest_id);
-
+	{
+		boost_IO_vcpu(current->pid,irq.dest_id);
 		trace_kvm_apic_ipi(icr_low, irq.dest_id);
-
+	}
 	kvm_irq_delivery_to_apic(apic->vcpu->kvm, apic, &irq, NULL);
 }
 
