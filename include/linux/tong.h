@@ -43,6 +43,11 @@ struct vcpu_io{
 	struct hlist_node hnode;
 	struct list_head lnode;
 };
+struct kvm_irq_vcpu{
+	int kvm_pid;
+	int IRQ_vcpu_pid;
+	struct list_head lnode;
+};
 /*
 static inline void clean_io_data(struct vhost_table *kv_table)
 {

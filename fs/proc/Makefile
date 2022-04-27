@@ -24,7 +24,6 @@ proc-y	+= uptime.o
 proc-y	+= util.o
 proc-y	+= version.o
 proc-y	+= softirqs.o
-proc-y  += kvm.o
 proc-y  += kvm_new.o
 proc-y	+= namespaces.o
 proc-y	+= self.o

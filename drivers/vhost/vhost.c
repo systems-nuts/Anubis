@@ -578,12 +578,6 @@ static void vhost_detach_mm(struct vhost_dev *dev)
 
 	dev->mm = NULL;
 }
-//extern int vhost_pids[100000];
-//extern int kvm_vhost[100000];
-/* Caller should have device mutex */
-extern int list_kvm_vhost_add(int pid1, int pid2);
-//extern int kvm_vhost_add(int pid1, int pid2);
-extern int vhost_table_add(int pid);
 long vhost_dev_set_owner(struct vhost_dev *dev)
 {
 	struct task_struct *worker;
@@ -613,11 +607,6 @@ long vhost_dev_set_owner(struct vhost_dev *dev)
 		if (err)
 			goto err_cgroup;
 	}
-	//vhost_pids[worker->pid]=current->pid;
-//kvm_vhost[current->pid]=worker->pid;
-	printk("I open the vhost thread %d for kvm pid %d\n",worker->pid,current->pid);
-	list_kvm_vhost_add(current->pid,worker->pid);
-	vhost_table_add(worker->pid);
 
 	err = vhost_dev_alloc_iovecs(dev);
 	if (err)

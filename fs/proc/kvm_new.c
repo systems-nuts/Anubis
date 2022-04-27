@@ -8,17 +8,24 @@
 #include <linux/kthread.h>
 #include <linux/list_sort.h>
 #include <linux/tong.h>
-#include <linux/sched.h>
 #include <linux/sort.h>
+#include <linux/sched.h>
 #include <linux/types.h>
+#include <linux/trace.h>
+#include <trace/events/sched.h>
+
 DECLARE_HASHTABLE(vvtbl,10);
+static int _counter, _counter2;
 static struct vcpu_io *vcpu_list;
+static struct kvm_irq_vcpu *irq_list;
 static int booster_pid;
 static int control;
 int list_table_vcpu_add(int pid1, int pid2, int id, int cpu)
 {
 	struct vcpu_io *entry;
 	entry=(struct vcpu_io*)kmalloc(sizeof(struct vcpu_io),GFP_KERNEL);
+	_counter++;
+        printk("counter ++ %d\n",_counter);
 	entry->kvm_pid=pid1;
 	entry->vcpu_id=id;
 	entry->vcpu_pid=pid2;
@@ -27,19 +34,59 @@ int list_table_vcpu_add(int pid1, int pid2, int id, int cpu)
 	entry->IRQ_vcpu_pid=0;
 	hash_add(vvtbl,&entry->hnode,entry->vcpu_pid);
 	list_add(&entry->lnode,&vcpu_list->lnode);
-	printk("kvm pid %d vcpu id %d pid %d\n",entry->kvm_pid,entry->vcpu_id,entry->vcpu_pid);
+
 	return 0;
+
 }
 EXPORT_SYMBOL(list_table_vcpu_add);
 
+int list_kvm_irq_list_add(int kvm_pid)
+{
+	struct kvm_irq_vcpu *irq;
+        irq=(struct kvm_irq_vcpu*)kmalloc(sizeof(struct kvm_irq_vcpu*),GFP_KERNEL);
+	_counter2++;
+        printk("counter2 ++ %d\n",_counter2);
+        irq->kvm_pid=kvm_pid;
+        irq->IRQ_vcpu_pid=0;
+        list_add(&irq->lnode,&irq_list->lnode);
+	printk("wtf? %d",kvm_pid);
+	return 0; 
+}
+EXPORT_SYMBOL(list_kvm_irq_list_add);
 extern int sched_check_task_is_running(struct task_struct *tsk);
 extern void sched_force_schedule(struct task_struct *tsk, int clear_flag);
 extern void sched_extend_life(struct task_struct *tsk);
 
+
+int check_irq_vcpu(int vcpu_pid)
+{
+        struct kvm_irq_vcpu *irq;
+        struct list_head *pos,*next;
+
+	list_for_each_safe(pos,next,&irq_list->lnode)
+        {
+                irq=list_entry(pos,struct kvm_irq_vcpu, lnode);
+		if(irq)
+		{
+			//if IRQ vcpu is the sender
+                	if(irq->IRQ_vcpu_pid == vcpu_pid)
+                	{
+                	        return 1;
+                	}
+		}
+        }
+	return 0;
+
+}
+
+
 void boost_IO_vcpu(int vcpu_pid, int dest_id)
 {
-	if(vcpu_pid!=booster_pid)
+	//if IRQ vcpu is the IPI sender
+	trace_sched_check_tsk(vcpu_pid);
+	if(!check_irq_vcpu(vcpu_pid))
 		return;
+	trace_sched_check_tsk(1234);
 	struct list_head *pos;
         struct vcpu_io *entry;
         struct task_struct *IO_vcpu;
@@ -81,7 +128,8 @@ void boost_IRQ_vcpu(int vcpu_pid)
 	booster_pid = vcpu_pid;
 	//vhost_pid + vcpu_id => vcpu_io
 //	printk("%s %d\n",__func__,vcpu_pid);
-	struct list_head *pos;
+	struct list_head *pos, *pos2;
+	struct kvm_irq_vcpu *irq;
         struct vcpu_io *entry;
 	struct task_struct *IRQ_vcpu;
         list_for_each(pos,&vcpu_list->lnode)
@@ -90,6 +138,15 @@ void boost_IRQ_vcpu(int vcpu_pid)
                 if(entry->vcpu_pid == vcpu_pid)
                 {	
 			IRQ_vcpu = find_get_task_by_vpid(entry->vcpu_pid);
+			list_for_each(pos2,&irq_list->lnode)
+		        {
+                		irq=list_entry(pos2,struct kvm_irq_vcpu, lnode);
+				if(irq)
+				{
+					if(irq->kvm_pid == entry->kvm_pid)
+						irq->IRQ_vcpu_pid = entry->vcpu_pid;
+				}
+        		}
 		}
         }
 	//current running task
@@ -373,9 +430,17 @@ void cfs_record_run(void)
 
 static int cfs_ctx_sw_show(struct seq_file *m, void *v)
 {
-	seq_printf(m, "ctx_sw_flag %d\n",ctx_sw_flag);
-	seq_printf(m, "MAX %lld MIN %lld\n",record_max, record_min);
-	seq_printf(m, "Count %ld TOTAL %lld\n",counter,total_ctx);
+        struct kvm_irq_vcpu *irq;
+        struct list_head *pos;
+	seq_printf(m, "wtf????\n");
+        list_for_each(pos,&irq_list->lnode)
+        {
+                irq=list_entry(pos,struct kvm_irq_vcpu, lnode);
+                if(irq)
+                {
+			seq_printf(m, "pid %d irq %d\n",irq->kvm_pid,irq->IRQ_vcpu_pid);
+                }
+        }
 	return 0;
 }
 static int cfs_ctx_sw_refresh(struct seq_file *m, void *v)
@@ -401,14 +466,18 @@ EXPORT_SYMBOL(cfs_record_run);
 
 static int __init proc_cmdline_init(void)
 {
-	struct task_struct *tsk;
+	//struct task_struct *tsk;
 	hash_init(vvtbl);
 	vcpu_list=(struct vcpu_io*)kmalloc(sizeof(struct vcpu_io),GFP_KERNEL);
+	irq_list=(struct kvm_irq_vcpu*)kmalloc(sizeof(struct kvm_irq_vcpu),GFP_KERNEL);
+	INIT_LIST_HEAD(&irq_list->lnode);
 	INIT_LIST_HEAD(&vcpu_list->lnode);
-	tsk=kthread_run(vcpu_boosting_worker, NULL, "Huawei_new_Boosting");
-        if (IS_ERR(tsk)) {
-                printk(KERN_ERR "Cannot create KVM_IO, %ld\n", PTR_ERR(tsk));
-        }
+	_counter=0;
+	_counter2=0;
+	//tsk=kthread_run(vcpu_boosting_worker, NULL, "Huawei_new_Boosting");
+        //if (IS_ERR(tsk)) {
+         //       printk(KERN_ERR "Cannot create KVM_IO, %ld\n", PTR_ERR(tsk));
+        //}
 	proc_create_single("vcpu_list_sort",0,NULL,vcpu_sort);
 	proc_create_single("vcpu_fake_add",0,NULL,vcpu_fake_add);
 	proc_create_single("vcpu_list_show",0,NULL,vcpu_list_show);

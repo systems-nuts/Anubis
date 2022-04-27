@@ -4388,8 +4388,8 @@ dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
  * Preempt the current task with a newly woken task if needed:
  */
 //Huawei boosting 
-extern int cfs_boost_flag;
-extern int check_cpu_boosting(int);
+//extern int cfs_boost_flag;
+//extern int check_cpu_boosting(int);
 extern int cfs_print_flag;
 static void
 check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
@@ -4403,17 +4403,15 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 
 //	if(cfs_print_flag && cfs_rq->rq->cpu == 3)
 //		printk("cpu %d ideal_runtime %lu delta_exec %lu sysctl_sched_min_granularity %lu \n",cfs_rq->rq->cpu, ideal_runtime, delta_exec, sysctl_sched_min_granularity);
-
+/*
 	if(cfs_boost_flag && check_cpu_boosting(cfs_rq->rq->cpu))
         {
                 resched_curr(rq_of(cfs_rq));
-                /*
-                 * Increase context switch to allow more I/O interrupt handle
-                 */
+                // Increase context switch to allow more I/O interrupt handle
                 clear_buddies(cfs_rq, curr);
                 return;
         }
-
+*/
 
 	if (delta_exec > ideal_runtime) {
 		trace_sched_check_tsk(100);
@@ -11470,7 +11468,6 @@ int sched_check_task_is_running(struct task_struct *tsk)
 	se = rq->curr;
 	if(!se)
 	{
-		trace_sched_check_tsk(3);
 		return 0;
 	}
 	if(!entity_is_task(se))
@@ -11507,7 +11504,7 @@ void sched_force_schedule(struct task_struct *tsk, int clear_flag)
 	{
 		poor_se= &poor_guy->se;
 	}
-	trace_sched_force_sched(111,clear_flag);
+	trace_sched_force_sched(tsk->pid,clear_flag);
 	yield_to_task_fair(rq,tsk);
 	resched_curr(rq);
 	/*
@@ -11540,16 +11537,16 @@ void sched_extend_life(struct task_struct *tsk)
 	rq = task_cfs_rq(tsk);
 	curr = &tsk->se;
 	trace_sched_extend_life(1);
-	yield_to_task_fair(rq_of(rq),tsk);
 	/*
 	curr->vruntime -= 5000000ULL;
 	curr->sum_exec_runtime = curr->prev_sum_exec_runtime;
 	curr->exec_start = rq_clock_task(rq_of(rq));
-	clear_tsk_need_resched(tsk);
+	set_next_buddy(curr);
 	update_curr(rq);
-	update_load_avg(rq, curr, UPDATE_TG);
-        update_cfs_group(curr);
 	*/
+	yield_to_task_fair(rq_of(rq),tsk);
+        //resched_curr(rq_of(rq));
+
 }
 EXPORT_SYMBOL_GPL(sched_extend_life);
 

@@ -8,8 +8,8 @@
 #include <linux/kthread.h>
 #include <linux/list_sort.h>
 #include <linux/tong.h>
-#include <linux/sched.h>
 #include <linux/sort.h>
+#include <linux/sched.h>
 #include <linux/types.h>
 DECLARE_HASHTABLE(tbl,2);
 DECLARE_HASHTABLE(vtbl,10);
