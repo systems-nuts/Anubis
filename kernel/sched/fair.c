@@ -11499,6 +11499,15 @@ void sched_force_schedule(struct task_struct *tsk, int clear_flag)
 	cfs_rq = task_cfs_rq(tsk);
 	rq = rq_of(cfs_rq);
 	poor_guy = rq->curr;
+	//we only force another VCPU to yield, if it is other task,
+	//such as migrater or numa balancer, we will fucked up because of 
+	//some deadlock issues
+	if(!(poor_guy->flags & PF_VCPU))
+	{	
+//		printk("we are try fuck a non vpu thread, leave it away!\n");
+		return;
+	}
+			
 	lucky_se = &tsk->se;
 	if(poor_guy)
 	{
@@ -11507,25 +11516,6 @@ void sched_force_schedule(struct task_struct *tsk, int clear_flag)
 	trace_sched_force_sched(tsk->pid,clear_flag);
 	yield_to_task_fair(rq,tsk);
 	resched_curr(rq);
-	/*
-	if(poor_se)
-	{
-		trace_sched_force_sched(999,clear_flag);
-		poor_se->exec_start -= 10000000ULL;
-		poor_se->sum_exec_runtime+= 10000000ULL;
-		poor_se->vruntime+= 100000000ULL;
-		update_curr(cfs_rq);
-	        update_load_avg(cfs_rq, poor_se, UPDATE_TG);
-	        update_cfs_group(poor_se);
-	}
-	else
-		trace_sched_force_sched(111,clear_flag);
-
-	resched_curr(rq);
-
-	//if(clear_flag)
-	clear_buddies(cfs_rq,&tsk->se);
-	*/
 }
 EXPORT_SYMBOL_GPL(sched_force_schedule);
 
@@ -11537,15 +11527,7 @@ void sched_extend_life(struct task_struct *tsk)
 	rq = task_cfs_rq(tsk);
 	curr = &tsk->se;
 	trace_sched_extend_life(1);
-	/*
-	curr->vruntime -= 5000000ULL;
-	curr->sum_exec_runtime = curr->prev_sum_exec_runtime;
-	curr->exec_start = rq_clock_task(rq_of(rq));
-	set_next_buddy(curr);
-	update_curr(rq);
-	*/
 	yield_to_task_fair(rq_of(rq),tsk);
-        //resched_curr(rq_of(rq));
 
 }
 EXPORT_SYMBOL_GPL(sched_extend_life);
