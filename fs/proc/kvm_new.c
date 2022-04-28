@@ -43,7 +43,7 @@ EXPORT_SYMBOL(list_table_vcpu_add);
 int list_kvm_irq_list_add(int kvm_pid)
 {
 	struct kvm_irq_vcpu *irq;
-        irq=(struct kvm_irq_vcpu*)kmalloc(sizeof(struct kvm_irq_vcpu*),GFP_KERNEL);
+        irq=(struct kvm_irq_vcpu*)kmalloc(sizeof(struct kvm_irq_vcpu),GFP_KERNEL);
 	_counter2++;
         printk("counter2 ++ %d\n",_counter2);
         irq->kvm_pid=kvm_pid;
