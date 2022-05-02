@@ -765,7 +765,7 @@ static int vhost_net_build_xdp(struct vhost_net_virtqueue *nvq,
 
 	return 0;
 }
-//TONG
+
 static void handle_tx_copy(struct vhost_net *net, struct socket *sock)
 {
 	struct vhost_net_virtqueue *nvq = &net->vqs[VHOST_NET_VQ_TX];
@@ -851,6 +851,7 @@ done:
 		vq->heads[nvq->done_idx].len = 0;
 		++nvq->done_idx;
 	} while (likely(!vhost_exceeds_weight(vq, ++sent_pkts, total_len)));
+
 	vhost_tx_batch(net, nvq, sock, &msg);
 }
 
@@ -969,6 +970,7 @@ static void handle_tx(struct vhost_net *net)
 
 	if (!vq_meta_prefetch(vq))
 		goto out;
+
 	vhost_disable_notify(&net->dev, vq);
 	vhost_net_disable_vq(net, vq);
 
@@ -1238,6 +1240,7 @@ static void handle_rx(struct vhost_net *net)
 					vq->iov, in);
 		total_len += vhost_len;
 	} while (likely(!vhost_exceeds_weight(vq, ++recv_pkts, total_len)));
+
 	if (unlikely(busyloop_intr))
 		vhost_poll_queue(&vq->poll);
 	else if (!sock_len)
@@ -1252,6 +1255,7 @@ static void handle_tx_kick(struct vhost_work *work)
 	struct vhost_virtqueue *vq = container_of(work, struct vhost_virtqueue,
 						  poll.work);
 	struct vhost_net *net = container_of(vq->dev, struct vhost_net, dev);
+
 	handle_tx(net);
 }
 
@@ -1377,7 +1381,6 @@ static void vhost_net_flush_vq(struct vhost_net *n, int index)
 
 static void vhost_net_flush(struct vhost_net *n)
 {
-	printk("%s got flush by pid %d \n",__func__,current->pid);
 	vhost_net_flush_vq(n, VHOST_NET_VQ_TX);
 	vhost_net_flush_vq(n, VHOST_NET_VQ_RX);
 	if (n->vqs[VHOST_NET_VQ_TX].ubufs) {

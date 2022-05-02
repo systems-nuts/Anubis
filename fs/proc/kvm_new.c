@@ -83,10 +83,8 @@ int check_irq_vcpu(int vcpu_pid)
 void boost_IO_vcpu(int vcpu_pid, int dest_id)
 {
 	//if IRQ vcpu is the IPI sender
-	trace_sched_check_tsk(vcpu_pid);
 	if(!check_irq_vcpu(vcpu_pid))
 		return;
-	trace_sched_check_tsk(1234);
 	struct list_head *pos;
         struct vcpu_io *entry;
         struct task_struct *IO_vcpu;

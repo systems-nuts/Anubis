@@ -11495,9 +11495,13 @@ void sched_force_schedule(struct task_struct *tsk, int clear_flag)
 	struct cfs_rq *cfs_rq;
 	struct task_struct *poor_guy;
 	struct sched_entity *poor_se, *lucky_se;
-	struct rq *rq;
+	struct rq *rq, *curr_rq;
+	struct rq_flags rf;
+	curr_rq=this_rq();
+	//lock the runqueue
 	cfs_rq = task_cfs_rq(tsk);
 	rq = rq_of(cfs_rq);
+	double_rq_lock(rq,curr_rq);
 	poor_guy = rq->curr;
 	//we only force another VCPU to yield, if it is other task,
 	//such as migrater or numa balancer, we will fucked up because of 
@@ -11505,6 +11509,8 @@ void sched_force_schedule(struct task_struct *tsk, int clear_flag)
 	if(!(poor_guy->flags & PF_VCPU))
 	{	
 //		printk("we are try fuck a non vpu thread, leave it away!\n");
+		double_rq_unlock(rq,curr_rq);
+
 		return;
 	}
 			
@@ -11516,18 +11522,26 @@ void sched_force_schedule(struct task_struct *tsk, int clear_flag)
 	trace_sched_force_sched(tsk->pid,clear_flag);
 	yield_to_task_fair(rq,tsk);
 	resched_curr(rq);
+	double_rq_unlock(rq,curr_rq);
+
+//	yield_to(tsk,1);
 }
 EXPORT_SYMBOL_GPL(sched_force_schedule);
 
 void sched_extend_life(struct task_struct *tsk)
 {
-	struct cfs_rq *rq;
+	struct cfs_rq *cfs_rq;
+	struct rq *rq;
 	struct sched_entity *curr;
 	unsigned long ideal_runtime, delta_exec;
-	rq = task_cfs_rq(tsk);
+	struct rq_flags rf;
+        cfs_rq = task_cfs_rq(tsk);
+        rq = rq_of(cfs_rq);
+
 	curr = &tsk->se;
 	trace_sched_extend_life(1);
-	yield_to_task_fair(rq_of(rq),tsk);
+	yield_to_task_fair(rq,tsk);
+//	yield_to(tsk,0);
 
 }
 EXPORT_SYMBOL_GPL(sched_extend_life);

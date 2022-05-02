@@ -578,6 +578,8 @@ static void vhost_detach_mm(struct vhost_dev *dev)
 
 	dev->mm = NULL;
 }
+
+/* Caller should have device mutex */
 long vhost_dev_set_owner(struct vhost_dev *dev)
 {
 	struct task_struct *worker;
