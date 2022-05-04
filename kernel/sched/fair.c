@@ -11531,17 +11531,22 @@ EXPORT_SYMBOL_GPL(sched_force_schedule);
 void sched_extend_life(struct task_struct *tsk)
 {
 	struct cfs_rq *cfs_rq;
-	struct rq *rq;
+	struct rq *rq, *curr_rq;
 	struct sched_entity *curr;
 	unsigned long ideal_runtime, delta_exec;
 	struct rq_flags rf;
         cfs_rq = task_cfs_rq(tsk);
-        rq = rq_of(cfs_rq);
 
+	curr_rq=this_rq();
+
+        rq = rq_of(cfs_rq);
+	double_rq_lock(rq,curr_rq);
 	curr = &tsk->se;
 	trace_sched_extend_life(1);
 	yield_to_task_fair(rq,tsk);
 //	yield_to(tsk,0);
+	double_rq_unlock(rq,curr_rq);
+
 
 }
 EXPORT_SYMBOL_GPL(sched_extend_life);
