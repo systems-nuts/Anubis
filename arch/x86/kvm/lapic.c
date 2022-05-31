@@ -1062,6 +1062,8 @@ bool kvm_intr_is_single_vcpu_fast(struct kvm *kvm, struct kvm_lapic_irq *irq,
 //In ioapic.c we implement the booster of IRQ, because IRQ VCPU run the accept_irq
 //function only when VCPU is running
 extern void boost_IRQ_vcpu(int);
+extern int xiaoyang2;
+extern int ctx_sw_flag;
 extern int cfs_print_flag;
 static int __apic_accept_irq(struct kvm_lapic *apic, int delivery_mode,
 			     int vector, int level, int trig_mode,
@@ -1069,6 +1071,31 @@ static int __apic_accept_irq(struct kvm_lapic *apic, int delivery_mode,
 {
 	int result = 0;
 	struct kvm_vcpu *vcpu = apic->vcpu;
+	if(xiaoyang2)
+	{
+		if(current->comm[0]=='q' &&current->comm[1]=='e')
+
+	                trace_kvm_apic_accept_irq(vcpu->vcpu_id, delivery_mode,
+        	                                 trig_mode, vector);
+		
+		if(current->comm[0]=='v' &&current->comm[1]=='h')
+			trace_kvm_apic_accept_irq(vcpu->vcpu_id, delivery_mode,
+                                                 trig_mode, vector);
+
+	}
+	/*
+	if(ctx_sw_flag)
+	{
+//		printk("%s %s \n",__func__,current->comm);
+		if(current->comm[0]=='q' &&current->comm[1]=='e')
+                {
+//		printk("%s %s %d %d \n",__func__,current->comm,current->pid,vcpu->pid->numbers[0].nr);
+		boost_IRQ_vcpu(vcpu->pid->numbers[0].nr);
+		trace_kvm_apic_accept_irq(vcpu->vcpu_id, delivery_mode,
+                                          trig_mode, vector);
+		}
+	}
+
 	if(cfs_print_flag)
 	{
 		if(current->comm[0]=='v' &&current->comm[1]=='h')
@@ -1079,6 +1106,7 @@ static int __apic_accept_irq(struct kvm_lapic *apic, int delivery_mode,
 					  trig_mode, vector);
 		}
 	}
+	*/
 	switch (delivery_mode) {
 	case APIC_DM_LOWEST:
 		vcpu->arch.apic_arb_prio++;
@@ -1307,8 +1335,13 @@ void kvm_apic_send_ipi(struct kvm_lapic *apic, u32 icr_low, u32 icr_high)
 	if(cfs_print_flag)
 	{
 		boost_IO_vcpu(current->pid,irq.dest_id);
-		trace_kvm_apic_ipi(icr_low, irq.dest_id);
+	//	trace_kvm_apic_ipi(icr_low, irq.dest_id);
 	}
+	if(xiaoyang2)
+        {
+                trace_kvm_apic_ipi(icr_low, irq.dest_id);
+        }
+
 	kvm_irq_delivery_to_apic(apic->vcpu->kvm, apic, &irq, NULL);
 }
 

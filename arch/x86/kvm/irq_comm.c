@@ -43,7 +43,8 @@ static int kvm_set_ioapic_irq(struct kvm_kernel_irq_routing_entry *e,
 	return kvm_ioapic_set_irq(ioapic, e->irqchip.pin, irq_source_id, level,
 				line_status);
 }
-
+extern int xiaoyang;
+extern int kvm_vcpu_young(struct kvm *,int);
 int kvm_irq_delivery_to_apic(struct kvm *kvm, struct kvm_lapic *src,
 		struct kvm_lapic_irq *irq, struct dest_map *dest_map)
 {
@@ -60,7 +61,6 @@ int kvm_irq_delivery_to_apic(struct kvm *kvm, struct kvm_lapic *src,
 		printk(KERN_INFO "kvm: apic: phys broadcast and lowest prio\n");
 		irq->delivery_mode = APIC_DM_FIXED;
 	}
-
 	memset(dest_vcpu_bitmap, 0, sizeof(dest_vcpu_bitmap));
 
 	kvm_for_each_vcpu(i, vcpu, kvm) {
@@ -86,6 +86,7 @@ int kvm_irq_delivery_to_apic(struct kvm *kvm, struct kvm_lapic *src,
 				dest_vcpus++;
 			}
 		}
+
 	}
 
 	if (dest_vcpus != 0) {
@@ -96,7 +97,9 @@ int kvm_irq_delivery_to_apic(struct kvm *kvm, struct kvm_lapic *src,
 	}
 
 	if (lowest)
+	{
 		r = kvm_apic_set_irq(lowest, irq, dest_map);
+	}
 
 	return r;
 }
@@ -104,9 +107,9 @@ int kvm_irq_delivery_to_apic(struct kvm *kvm, struct kvm_lapic *src,
 void kvm_set_msi_irq(struct kvm *kvm, struct kvm_kernel_irq_routing_entry *e,
 		     struct kvm_lapic_irq *irq)
 {
-	trace_kvm_msi_set_irq(e->msi.address_lo | (kvm->arch.x2apic_format ?
-	                                     (u64)e->msi.address_hi << 32 : 0),
-	                      e->msi.data);
+//	trace_kvm_msi_set_irq(e->msi.address_lo | (kvm->arch.x2apic_format ?
+//	                                     (u64)e->msi.address_hi << 32 : 0),
+//	                      e->msi.data);
 
 	irq->dest_id = (e->msi.address_lo &
 			MSI_ADDR_DEST_ID_MASK) >> MSI_ADDR_DEST_ID_SHIFT;
@@ -115,9 +118,10 @@ void kvm_set_msi_irq(struct kvm *kvm, struct kvm_kernel_irq_routing_entry *e,
 	irq->vector = (e->msi.data &
 			MSI_DATA_VECTOR_MASK) >> MSI_DATA_VECTOR_SHIFT;
 	irq->dest_mode = kvm_lapic_irq_dest_mode(
-	    !!((1 << MSI_ADDR_DEST_MODE_SHIFT) & e->msi.address_lo));
+   	!!((1 << MSI_ADDR_DEST_MODE_SHIFT) & e->msi.address_lo));
 	irq->trig_mode = (1 << MSI_DATA_TRIGGER_SHIFT) & e->msi.data;
 	irq->delivery_mode = e->msi.data & 0x700;
+
 	irq->msi_redir_hint = ((e->msi.address_lo
 		& MSI_ADDR_REDIRECTION_LOWPRI) > 0);
 	irq->level = 1;
@@ -130,7 +134,6 @@ static inline bool kvm_msi_route_invalid(struct kvm *kvm,
 {
 	return kvm->arch.x2apic_format && (e->msi.address_hi & 0xff);
 }
-
 int kvm_set_msi(struct kvm_kernel_irq_routing_entry *e,
 		struct kvm *kvm, int irq_source_id, int level, bool line_status)
 {
@@ -175,6 +178,16 @@ int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
 			return -EINVAL;
 
 		kvm_set_msi_irq(kvm, e, &irq);
+	        if(xiaoyang)
+        	{
+//			printk(" %s before irq dest_id %u vector %u\n",__func__,irq.dest_id,irq.vector);
+			irq.dest_id=kvm_vcpu_young(kvm,irq.dest_id);
+//			printk(" %s after irq dest_id %u vector %u\n",__func__,irq.dest_id,irq.vector);
+        	}
+	        trace_kvm_msi_set_irq(e->msi.address_lo | (kvm->arch.x2apic_format ?
+                                           (u64)e->msi.address_hi << 32 : 0),
+                           e->msi.data);
+
 
 		if (kvm_irq_delivery_to_apic_fast(kvm, NULL, &irq, &r, NULL))
 			return r;

@@ -12,6 +12,8 @@
 #include <linux/sched.h>
 #include <linux/types.h>
 #include <linux/trace.h>
+#include <linux/log2.h>
+#include <linux/kvm_host.h>
 #include <trace/events/sched.h>
 
 DECLARE_HASHTABLE(vvtbl,10);
@@ -79,27 +81,87 @@ int check_irq_vcpu(int vcpu_pid)
 
 }
 
+int kvm_vcpu_young(struct kvm *kvm, int dest_id)
+{
+	unsigned int i;
+	struct kvm_vcpu *vcpu;
+	struct list_head *pos;
+	struct kvm_irq_vcpu *irq;
+        struct vcpu_io *entry;
+        struct task_struct *IO_vcpu;
+	int ret = dest_id, irq_vcpu=0;
+	if(dest_id > 8)
+		dest_id = 8; 
+	vcpu=kvm->vcpus[order_base_2(dest_id)];
+	IO_vcpu = find_get_task_by_vpid(vcpu->pid->numbers[0].nr);
+	if(sched_check_task_is_running(IO_vcpu))
+	{
+		ret = dest_id;
+		irq_vcpu=vcpu->pid->numbers[0].nr;
+	}
+	else
+	{
+		kvm_for_each_vcpu(i, vcpu, kvm) {
+			IO_vcpu = find_get_task_by_vpid(vcpu->pid->numbers[0].nr);
+			if(sched_check_task_is_running(IO_vcpu))
+			{
+				ret = 1 << vcpu->vcpu_id;
+				irq_vcpu=vcpu->pid->numbers[0].nr;
+				break;
+			}
+		}
+	}
+	list_for_each(pos,&irq_list->lnode)
+        {
+                irq=list_entry(pos,struct kvm_irq_vcpu, lnode);
+                if(irq)
+                {
+			//list of KVM, each has a content point to IRQ vcpu
+                        if(irq->kvm_pid == (int)kvm->userspace_pid)
+			{
+				//set the one who receive the IRQ as the irq_vcpu
+				//for later boosting in IPI
+                                irq->IRQ_vcpu_pid = irq_vcpu;
+				printk("IRQ_VCPU %d\n",irq_vcpu);
+			}
+                }
+        }
 
+	return ret;
+	
+}
+EXPORT_SYMBOL(kvm_vcpu_young);
 void boost_IO_vcpu(int vcpu_pid, int dest_id)
 {
 	//if IRQ vcpu is the IPI sender
+	dest_id=order_base_2(dest_id);
+	if(dest_id  > 3) 
+		dest_id = 3;
+
 	if(!check_irq_vcpu(vcpu_pid))
 		return;
 	struct list_head *pos;
         struct vcpu_io *entry;
         struct task_struct *IO_vcpu;
 	int curr_kvm;
+
         list_for_each(pos,&vcpu_list->lnode)
         {
                 entry=list_entry(pos,struct vcpu_io, lnode);
+		if(!entry)
+			return;
                 if(entry->vcpu_pid == vcpu_pid)
                 {
                         curr_kvm = entry->kvm_pid;
                 }
+		
         }
+
 	list_for_each(pos,&vcpu_list->lnode)
         {
                 entry=list_entry(pos,struct vcpu_io, lnode);
+                if(!entry)
+                        return;
                 if(entry->kvm_pid == curr_kvm && entry->vcpu_id == dest_id)
                 {
                         IO_vcpu = find_get_task_by_vpid(entry->vcpu_pid);
@@ -108,7 +170,7 @@ void boost_IO_vcpu(int vcpu_pid, int dest_id)
 
 	if(!IO_vcpu)
                 return;
-
+/*
         if(sched_check_task_is_running(IO_vcpu)) //if current running is IRQ_vcpu
 	{
 		sched_extend_life(IO_vcpu);
@@ -117,6 +179,9 @@ void boost_IO_vcpu(int vcpu_pid, int dest_id)
         {
                 sched_force_schedule(IO_vcpu,1);
         }
+*/
+	if(!sched_check_task_is_running(IO_vcpu))
+		sched_force_schedule(IO_vcpu,1);
 
 }
 EXPORT_SYMBOL(boost_IO_vcpu);
@@ -376,6 +441,31 @@ static int cfs_print(struct seq_file *m, void *v)
         seq_printf(m, "cfs_print_flag %d\n",cfs_print_flag);
         return 0;
 }
+int xiaoyang=0;
+int xiaoyang2=0;
+EXPORT_SYMBOL(xiaoyang2);
+EXPORT_SYMBOL(xiaoyang);
+static int irq_check2(struct seq_file *m, void *v)
+{
+        if(xiaoyang2)
+                xiaoyang2=0;
+        else
+                xiaoyang2=1;
+        seq_printf(m, "xiaoyang2 %d\n",xiaoyang2);
+        return 0;
+}
+
+
+static int irq_check(struct seq_file *m, void *v)
+{
+        if(xiaoyang)
+                xiaoyang=0;
+        else
+                xiaoyang=1;
+        seq_printf(m, "xiaoyang %d\n",xiaoyang);
+        return 0;
+}
+
 
 int check_cpu_boosting(int cpu)
 {
@@ -486,7 +576,8 @@ static int __init proc_cmdline_init(void)
 	proc_create_single("cfs_ctx_sw", 0, NULL, cfs_ctx_sw_flag);
 	proc_create_single("cfs_ctx_show", 0, NULL, cfs_ctx_sw_show);
 	proc_create_single("cfs_ctx_refresh", 0, NULL, cfs_ctx_sw_refresh);
-
+	proc_create_single("xiaoyang",0 , NULL, irq_check);
+	proc_create_single("xiaoyang2",0 , NULL, irq_check2);
 
 
         return 0;
