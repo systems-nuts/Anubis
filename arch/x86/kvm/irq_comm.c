@@ -43,7 +43,8 @@ static int kvm_set_ioapic_irq(struct kvm_kernel_irq_routing_entry *e,
 	return kvm_ioapic_set_irq(ioapic, e->irqchip.pin, irq_source_id, level,
 				line_status);
 }
-extern int xiaoyang;
+extern int IRQ_redirect;
+extern void boost_IRQ_vcpu(int);
 extern int kvm_vcpu_young(struct kvm *,int);
 int kvm_irq_delivery_to_apic(struct kvm *kvm, struct kvm_lapic *src,
 		struct kvm_lapic_irq *irq, struct dest_map *dest_map)
@@ -167,7 +168,7 @@ int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
 {
 	struct kvm_lapic_irq irq;
 	int r;
-
+	int dest;
 	switch (e->type) {
 	case KVM_IRQ_ROUTING_HV_SINT:
 		return kvm_hv_set_sint(e, kvm, irq_source_id, level,
@@ -178,10 +179,23 @@ int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
 			return -EINVAL;
 
 		kvm_set_msi_irq(kvm, e, &irq);
-	        if(xiaoyang)
+	        if(IRQ_redirect)
         	{
 //			printk(" %s before irq dest_id %u vector %u\n",__func__,irq.dest_id,irq.vector);
-			irq.dest_id=kvm_vcpu_young(kvm,irq.dest_id);
+			dest=kvm_vcpu_young(kvm,irq.dest_id);
+			if(dest)
+			{
+				printk("change dest to %d\n",dest);
+				irq.dest_id = dest;
+			}
+			else
+			{
+				printk("keep dest to %d and boost vcpu %d\n",irq.dest_id,order_base_2(irq.dest_id));
+				if(irq.dest_id > 8)
+			                irq.dest_id = 8;
+				boost_IRQ_vcpu(kvm->vcpus[order_base_2(irq.dest_id)]->pid->numbers[0].nr);
+			
+			}
 //			printk(" %s after irq dest_id %u vector %u\n",__func__,irq.dest_id,irq.vector);
         	}
 	        trace_kvm_msi_set_irq(e->msi.address_lo | (kvm->arch.x2apic_format ?

@@ -89,7 +89,7 @@ int kvm_vcpu_young(struct kvm *kvm, int dest_id)
 	struct kvm_irq_vcpu *irq;
         struct vcpu_io *entry;
         struct task_struct *IO_vcpu;
-	int ret = dest_id, irq_vcpu=0;
+	int ret = 0, irq_vcpu=0;
 	if(dest_id > 8)
 		dest_id = 8; 
 	vcpu=kvm->vcpus[order_base_2(dest_id)];
@@ -122,7 +122,7 @@ int kvm_vcpu_young(struct kvm *kvm, int dest_id)
 				//set the one who receive the IRQ as the irq_vcpu
 				//for later boosting in IPI
                                 irq->IRQ_vcpu_pid = irq_vcpu;
-				printk("IRQ_VCPU %d\n",irq_vcpu);
+		//		printk("IRQ_VCPU %d\n",irq_vcpu);
 			}
                 }
         }
@@ -201,6 +201,7 @@ void boost_IRQ_vcpu(int vcpu_pid)
                 if(entry->vcpu_pid == vcpu_pid)
                 {	
 			IRQ_vcpu = find_get_task_by_vpid(entry->vcpu_pid);
+			/*
 			list_for_each(pos2,&irq_list->lnode)
 		        {
                 		irq=list_entry(pos2,struct kvm_irq_vcpu, lnode);
@@ -210,15 +211,17 @@ void boost_IRQ_vcpu(int vcpu_pid)
 						irq->IRQ_vcpu_pid = entry->vcpu_pid;
 				}
         		}
+			*/
 		}
         }
 	//current running task
 	if(!IRQ_vcpu)
 		return;
 		
-	if(sched_check_task_is_running(IRQ_vcpu)) //if current running is IRQ_vcpu
+	if(unlikely(sched_check_task_is_running(IRQ_vcpu))) //if current running is IRQ_vcpu
         {
-                sched_extend_life(IRQ_vcpu);
+              //  sched_extend_life(IRQ_vcpu);
+	      return;
         }
         else
 	{
@@ -441,28 +444,28 @@ static int cfs_print(struct seq_file *m, void *v)
         seq_printf(m, "cfs_print_flag %d\n",cfs_print_flag);
         return 0;
 }
-int xiaoyang=0;
-int xiaoyang2=0;
-EXPORT_SYMBOL(xiaoyang2);
-EXPORT_SYMBOL(xiaoyang);
+int IRQ_redirect=0;
+int IRQ_redirect_log=0;
+EXPORT_SYMBOL(IRQ_redirect);
+EXPORT_SYMBOL(IRQ_redirect_log);
 static int irq_check2(struct seq_file *m, void *v)
 {
-        if(xiaoyang2)
-                xiaoyang2=0;
+        if(IRQ_redirect_log)
+                IRQ_redirect_log=0;
         else
-                xiaoyang2=1;
-        seq_printf(m, "xiaoyang2 %d\n",xiaoyang2);
+                IRQ_redirect_log=1;
+        seq_printf(m, "IRQ_redirect_log %d\n",IRQ_redirect_log);
         return 0;
 }
 
 
 static int irq_check(struct seq_file *m, void *v)
 {
-        if(xiaoyang)
-                xiaoyang=0;
+        if(IRQ_redirect)
+                IRQ_redirect=0;
         else
-                xiaoyang=1;
-        seq_printf(m, "xiaoyang %d\n",xiaoyang);
+                IRQ_redirect=1;
+        seq_printf(m, "IRQ_redirect %d\n",IRQ_redirect);
         return 0;
 }
 
@@ -566,18 +569,10 @@ static int __init proc_cmdline_init(void)
         //if (IS_ERR(tsk)) {
          //       printk(KERN_ERR "Cannot create KVM_IO, %ld\n", PTR_ERR(tsk));
         //}
-	proc_create_single("vcpu_list_sort",0,NULL,vcpu_sort);
-	proc_create_single("vcpu_fake_add",0,NULL,vcpu_fake_add);
 	proc_create_single("vcpu_list_show",0,NULL,vcpu_list_show);
-	proc_create_single("vcpu_boosting_control",0,NULL,vcpu_boosting);
-	proc_create_single("vcpu_io",0,NULL,vcpu_io_sort);
-	proc_create_single("cfs_boost", 0, NULL, cfs_boost);
-	proc_create_single("cfs_print", 0, NULL, cfs_print);
-	proc_create_single("cfs_ctx_sw", 0, NULL, cfs_ctx_sw_flag);
-	proc_create_single("cfs_ctx_show", 0, NULL, cfs_ctx_sw_show);
-	proc_create_single("cfs_ctx_refresh", 0, NULL, cfs_ctx_sw_refresh);
-	proc_create_single("xiaoyang",0 , NULL, irq_check);
-	proc_create_single("xiaoyang2",0 , NULL, irq_check2);
+	proc_create_single("IPI_boost", 0, NULL, cfs_print);
+	proc_create_single("IRQ_redirect",0 , NULL, irq_check);
+	proc_create_single("IRQ_redirect_log",0 , NULL, irq_check2);
 
 
         return 0;

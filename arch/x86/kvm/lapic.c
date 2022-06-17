@@ -1062,8 +1062,8 @@ bool kvm_intr_is_single_vcpu_fast(struct kvm *kvm, struct kvm_lapic_irq *irq,
 //In ioapic.c we implement the booster of IRQ, because IRQ VCPU run the accept_irq
 //function only when VCPU is running
 extern void boost_IRQ_vcpu(int);
-extern int xiaoyang2;
-extern int ctx_sw_flag;
+extern int IRQ_redirect_log;
+//extern int ctx_sw_flag;
 extern int cfs_print_flag;
 static int __apic_accept_irq(struct kvm_lapic *apic, int delivery_mode,
 			     int vector, int level, int trig_mode,
@@ -1071,7 +1071,7 @@ static int __apic_accept_irq(struct kvm_lapic *apic, int delivery_mode,
 {
 	int result = 0;
 	struct kvm_vcpu *vcpu = apic->vcpu;
-	if(xiaoyang2)
+	if(IRQ_redirect_log)
 	{
 		if(current->comm[0]=='q' &&current->comm[1]=='e')
 
@@ -1337,7 +1337,7 @@ void kvm_apic_send_ipi(struct kvm_lapic *apic, u32 icr_low, u32 icr_high)
 		boost_IO_vcpu(current->pid,irq.dest_id);
 	//	trace_kvm_apic_ipi(icr_low, irq.dest_id);
 	}
-	if(xiaoyang2)
+	if(IRQ_redirect_log)
         {
                 trace_kvm_apic_ipi(icr_low, irq.dest_id);
         }
