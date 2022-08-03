@@ -181,20 +181,16 @@ int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
 		kvm_set_msi_irq(kvm, e, &irq);
 	        if(IRQ_redirect)
         	{
-//			printk(" %s before irq dest_id %u vector %u\n",__func__,irq.dest_id,irq.vector);
 			dest=kvm_vcpu_young(kvm,irq.dest_id);
 			if(dest)
 			{
-				printk("change dest to %d\n",dest);
 				irq.dest_id = dest;
 			}
 			else
 			{
-				printk("keep dest to %d and boost vcpu %d\n",irq.dest_id,order_base_2(irq.dest_id));
 				if(irq.dest_id > 8)
-			                irq.dest_id = 8;
-				boost_IRQ_vcpu(kvm->vcpus[order_base_2(irq.dest_id)]->pid->numbers[0].nr);
-			
+	                                irq.dest_id = 8;
+        	                boost_IRQ_vcpu(kvm->vcpus[order_base_2(irq.dest_id)]->pid->numbers[0].nr);
 			}
 //			printk(" %s after irq dest_id %u vector %u\n",__func__,irq.dest_id,irq.vector);
         	}

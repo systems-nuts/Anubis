@@ -11455,7 +11455,12 @@ int sched_check_task_is_running(struct task_struct *tsk)
 {
 	struct cfs_rq *rq;
 	struct task_struct *curr;
-	struct sched_entity *se = &tsk->se;
+	struct sched_entity *se;
+	if(!tsk)
+		return 0;
+       	se = &tsk->se;
+	if(!se)
+		return 0;
 	if(!entity_is_task(se))
 	{
 		return 0;
@@ -11490,6 +11495,37 @@ int sched_check_task_is_running(struct task_struct *tsk)
 
 }
 EXPORT_SYMBOL_GPL(sched_check_task_is_running);
+void magic_switch(struct sched_entity *poor_se,struct sched_entity *lucky_se)
+{
+	if(poor_se->vruntime > lucky_se->vruntime)
+		return;
+	struct task_struct *A, *B;
+	A = task_of(poor_se);
+	B = task_of(lucky_se);
+	/*
+	printk("        exec_start %ld <-> %ld\n    \
+			sum_exec_runtime %ld <-> %ld \n  \
+			vruntime %ld <-> %ld \n    \ 
+			prev_sum_exec_runtime %ld <-> %ld\n",poor_se->exec_start,lucky_se->exec_start,poor_se->sum_exec_runtime,lucky_se->sum_exec_runtime,poor_se->vruntime,lucky_se->vruntime, poor_se->prev_sum_exec_runtime, lucky_se->prev_sum_exec_runtime);
+	*/
+	u64 t1,t2,t3,t4;
+	t1 = poor_se->exec_start;
+	poor_se->exec_start=lucky_se->exec_start;
+	lucky_se->exec_start = t1;
+
+	t2 = poor_se->sum_exec_runtime;
+        poor_se->sum_exec_runtime=lucky_se->sum_exec_runtime;
+        lucky_se->sum_exec_runtime = t2;
+	
+	t3 = poor_se->vruntime;
+        poor_se->vruntime=lucky_se->vruntime;
+        lucky_se->vruntime = t3;
+
+	t4 = poor_se->prev_sum_exec_runtime;
+        poor_se->prev_sum_exec_runtime =lucky_se->prev_sum_exec_runtime;
+        lucky_se->prev_sum_exec_runtime = t4;
+
+}
 void sched_force_schedule(struct task_struct *tsk, int clear_flag)
 {
 	struct cfs_rq *cfs_rq;
@@ -11497,20 +11533,26 @@ void sched_force_schedule(struct task_struct *tsk, int clear_flag)
 	struct sched_entity *poor_se, *lucky_se;
 	struct rq *rq, *curr_rq;
 	struct rq_flags rf;
+	unsigned long flags;
+
+	local_irq_save(flags);
 	curr_rq=this_rq();
 	//lock the runqueue
 	cfs_rq = task_cfs_rq(tsk);
 	rq = rq_of(cfs_rq);
+
+	
 	double_rq_lock(rq,curr_rq);
+
 	poor_guy = rq->curr;
 	//we only force another VCPU to yield, if it is other task,
 	//such as migrater or numa balancer, we will fucked up because of 
 	//some deadlock issues
-	if(!(poor_guy->flags & PF_VCPU))
+	if(!(poor_guy->flags & PF_VCPU) || (poor_guy->pid == tsk->pid))
 	{	
 //		printk("we are try fuck a non vpu thread, leave it away!\n");
 		double_rq_unlock(rq,curr_rq);
-
+		local_irq_restore(flags);
 		return;
 	}
 			
@@ -11519,11 +11561,15 @@ void sched_force_schedule(struct task_struct *tsk, int clear_flag)
 	{
 		poor_se= &poor_guy->se;
 	}
+	magic_switch(poor_se,lucky_se);
 	trace_sched_force_sched(tsk->pid,clear_flag);
 	yield_to_task_fair(rq,tsk);
+	set_skip_buddy(poor_se);
+	poor_se->vruntime+=20000000;
+	printk("curr %s %ld -> poor_se %s %ld luck_se %s %ld\n",current->comm, current->pid, A->comm,A->pid,B->comm,B->pid);
 	resched_curr(rq);
 	double_rq_unlock(rq,curr_rq);
-
+	local_irq_restore(flags);
 //	yield_to(tsk,1);
 }
 EXPORT_SYMBOL_GPL(sched_force_schedule);
@@ -11540,12 +11586,18 @@ void sched_extend_life(struct task_struct *tsk)
 	curr_rq=this_rq();
 
         rq = rq_of(cfs_rq);
+        if(!irqs_disabled())
+	{
+		printk("%s :irqs still enabled return\n",__func__);
+                return;
+	}
 	double_rq_lock(rq,curr_rq);
 	curr = &tsk->se;
 	trace_sched_extend_life(1);
 	yield_to_task_fair(rq,tsk);
 //	yield_to(tsk,0);
 	double_rq_unlock(rq,curr_rq);
+
 
 
 }

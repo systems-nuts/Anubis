@@ -59,22 +59,29 @@ extern int sched_check_task_is_running(struct task_struct *tsk);
 extern void sched_force_schedule(struct task_struct *tsk, int clear_flag);
 extern void sched_extend_life(struct task_struct *tsk);
 
-
-int check_irq_vcpu(int vcpu_pid)
+//CLEARLY THERE IS A BUG, BEFORE IT GOT CHECK, THE IRQ_VCPU_PID MIGHT GOT 
+//REFREASH, BECAUSE THE IPI CAN HAPPENED WAY MUCH LATE THAN THE TIME IRQ CAME
+//SO, INSTEAD OF EACH KVM <-> IRQ_VCPU 
+//WE DO EACH KVM -> VCPU[N], EACH VCPU KEEP THE TIME IT HAS BEEN INTERRUPTED
+//THEN WHENEVER WE CHECK ONE, WE JUST MINUS 1 UNTIL IT IS 0 -> NO IRQ 
+//SO IT WOULD BE FINE. 
+//2022-08-03 TONG AT UoE, TRY FINISH THIS PATCH BY NEXT DAY.
+int check_irq_vcpu(int vcpu_pid, int curr_kvm)
 {
         struct kvm_irq_vcpu *irq;
         struct list_head *pos,*next;
-
 	list_for_each_safe(pos,next,&irq_list->lnode)
         {
                 irq=list_entry(pos,struct kvm_irq_vcpu, lnode);
 		if(irq)
 		{
 			//if IRQ vcpu is the sender
-                	if(irq->IRQ_vcpu_pid == vcpu_pid)
-                	{
-                	        return 1;
-                	}
+			if(irq->kvm_pid = curr_kvm)
+	                	if(irq->IRQ_vcpu_pid == vcpu_pid)
+				{
+					irq->IRQ_vcpu_pid=0;
+        	        	        return 1;
+				}
 		}
         }
 	return 0;
@@ -138,8 +145,10 @@ void boost_IO_vcpu(int vcpu_pid, int dest_id)
 	if(dest_id  > 3) 
 		dest_id = 3;
 
-	if(!check_irq_vcpu(vcpu_pid))
-		return;
+	//CLEARLY WE NEED SOME CHANGE TO UPDATE THIS, 
+	//BECAUSE CURRENTLY IT JUST BOOST ALL IPI, 
+	//LET IT ONLY BOOST THE IPI THAT WAKE UP THE 
+	//IO THAT WE WANT INSTEAD OF THE RESCHEDULER OR TIMER, ETC
 	struct list_head *pos;
         struct vcpu_io *entry;
         struct task_struct *IO_vcpu;
@@ -156,6 +165,8 @@ void boost_IO_vcpu(int vcpu_pid, int dest_id)
                 }
 		
         }
+	if(!check_irq_vcpu(vcpu_pid,curr_kvm))
+                return;
 
 	list_for_each(pos,&vcpu_list->lnode)
         {
@@ -201,8 +212,7 @@ void boost_IRQ_vcpu(int vcpu_pid)
                 if(entry->vcpu_pid == vcpu_pid)
                 {	
 			IRQ_vcpu = find_get_task_by_vpid(entry->vcpu_pid);
-			/*
-			list_for_each(pos2,&irq_list->lnode)
+		/*	list_for_each(pos2,&irq_list->lnode)
 		        {
                 		irq=list_entry(pos2,struct kvm_irq_vcpu, lnode);
 				if(irq)
@@ -211,7 +221,7 @@ void boost_IRQ_vcpu(int vcpu_pid)
 						irq->IRQ_vcpu_pid = entry->vcpu_pid;
 				}
         		}
-			*/
+		*/
 		}
         }
 	//current running task
@@ -573,6 +583,7 @@ static int __init proc_cmdline_init(void)
 	proc_create_single("IPI_boost", 0, NULL, cfs_print);
 	proc_create_single("IRQ_redirect",0 , NULL, irq_check);
 	proc_create_single("IRQ_redirect_log",0 , NULL, irq_check2);
+	proc_create_single("Check_IRQ_record",0 , NULL, cfs_ctx_sw_show);
 
 
         return 0;
