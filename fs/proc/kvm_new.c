@@ -45,11 +45,17 @@ EXPORT_SYMBOL(list_table_vcpu_add);
 int list_kvm_irq_list_add(int kvm_pid)
 {
 	struct kvm_irq_vcpu *irq;
+	int *IRQ_record;
+	int i;
+	IRQ_record = (int*)kmalloc(sizeof(int)*100,GFP_KERNEL);//change 100 -> max vcpu
         irq=(struct kvm_irq_vcpu*)kmalloc(sizeof(struct kvm_irq_vcpu),GFP_KERNEL);
 	_counter2++;
-        printk("counter2 ++ %d\n",_counter2);
+        printk("kvm_pid %d\n",kvm_pid);
         irq->kvm_pid=kvm_pid;
         irq->IRQ_vcpu_pid=0;
+	irq->IRQ_time=IRQ_record;
+	for(i=0; i<100; i++)
+		irq->IRQ_time[i]=0;
         list_add(&irq->lnode,&irq_list->lnode);
 	printk("wtf? %d",kvm_pid);
 	return 0; 
@@ -66,22 +72,39 @@ extern void sched_extend_life(struct task_struct *tsk);
 //THEN WHENEVER WE CHECK ONE, WE JUST MINUS 1 UNTIL IT IS 0 -> NO IRQ 
 //SO IT WOULD BE FINE. 
 //2022-08-03 TONG AT UoE, TRY FINISH THIS PATCH BY NEXT DAY.
-int check_irq_vcpu(int vcpu_pid, int curr_kvm)
+int check_irq_vcpu(int vcpu_vpid, int curr_kvm)
 {
         struct kvm_irq_vcpu *irq;
+	int i,vcpu_id=0;
         struct list_head *pos,*next;
+	struct kvm_vcpu *vcpu;
 	list_for_each_safe(pos,next,&irq_list->lnode)
         {
                 irq=list_entry(pos,struct kvm_irq_vcpu, lnode);
 		if(irq)
 		{
 			//if IRQ vcpu is the sender
-			if(irq->kvm_pid = curr_kvm)
-	                	if(irq->IRQ_vcpu_pid == vcpu_pid)
+			if(irq->kvm_pid == curr_kvm)
+			{
+//				printk("KVM%d \n",curr_kvm);
+				kvm_for_each_vcpu(i, vcpu, irq->kvm_structure)
 				{
-					irq->IRQ_vcpu_pid=0;
-        	        	        return 1;
+//					printk("KVM%d vcpu %d\n",curr_kvm,vcpu->pid->numbers[0].nr);
+					if(vcpu->pid->numbers[0].nr == vcpu_vpid)
+					{
+						vcpu_id=vcpu->vcpu_id;
+//						printk("KVM%d vcpu_id %d\n",curr_kvm,vcpu_id);
+						if(irq->IRQ_time[vcpu_id]>0)
+						{
+//							printk("KVM %d vcpu_id %d count %d\n",curr_kvm,vcpu_id,irq->IRQ_time[vcpu_id]);
+							irq->IRQ_time[vcpu_id]-=1;
+		        	       	        	return 1;
+						}
+						else
+							return 0;
+					}
 				}
+			}
 		}
         }
 	return 0;
@@ -96,7 +119,7 @@ int kvm_vcpu_young(struct kvm *kvm, int dest_id)
 	struct kvm_irq_vcpu *irq;
         struct vcpu_io *entry;
         struct task_struct *IO_vcpu;
-	int ret = 0, irq_vcpu=0;
+	int ret = 0, irq_vcpu=0, vcpuID=0;
 	if(dest_id > 8)
 		dest_id = 8; 
 	vcpu=kvm->vcpus[order_base_2(dest_id)];
@@ -113,6 +136,7 @@ int kvm_vcpu_young(struct kvm *kvm, int dest_id)
 			if(sched_check_task_is_running(IO_vcpu))
 			{
 				ret = 1 << vcpu->vcpu_id;
+				vcpuID=vcpu->vcpu_id;
 				irq_vcpu=vcpu->pid->numbers[0].nr;
 				break;
 			}
@@ -128,8 +152,11 @@ int kvm_vcpu_young(struct kvm *kvm, int dest_id)
 			{
 				//set the one who receive the IRQ as the irq_vcpu
 				//for later boosting in IPI
-                                irq->IRQ_vcpu_pid = irq_vcpu;
-		//		printk("IRQ_VCPU %d\n",irq_vcpu);
+                                //irq->IRQ_vcpu_pid = irq_vcpu;
+				if(irq->IRQ_time[vcpuID]<100)
+					irq->IRQ_time[vcpuID]+=1;
+				irq->kvm_structure=kvm;
+			//	printk("IRQ_VCPU ID %d\n",vcpuID);
 			}
                 }
         }
@@ -165,8 +192,8 @@ void boost_IO_vcpu(int vcpu_pid, int dest_id)
                 }
 		
         }
-	if(!check_irq_vcpu(vcpu_pid,curr_kvm))
-                return;
+	//if(!check_irq_vcpu(vcpu_pid,curr_kvm))
+          //      return;
 
 	list_for_each(pos,&vcpu_list->lnode)
         {
@@ -531,15 +558,19 @@ void cfs_record_run(void)
 
 static int cfs_ctx_sw_show(struct seq_file *m, void *v)
 {
+	int i;
         struct kvm_irq_vcpu *irq;
         struct list_head *pos;
-	seq_printf(m, "wtf????\n");
         list_for_each(pos,&irq_list->lnode)
         {
                 irq=list_entry(pos,struct kvm_irq_vcpu, lnode);
                 if(irq)
                 {
-			seq_printf(m, "pid %d irq %d\n",irq->kvm_pid,irq->IRQ_vcpu_pid);
+			seq_printf(m, "kvm pid %d\n",irq->kvm_pid);
+			for(i=0; i<5; i++)
+			{
+				seq_printf(m, "vcpu %d irq %d\n", i, irq->IRQ_time[i]);
+			}
                 }
         }
 	return 0;

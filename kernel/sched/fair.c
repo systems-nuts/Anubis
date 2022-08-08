@@ -4397,7 +4397,6 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	unsigned long ideal_runtime, delta_exec;
 	struct sched_entity *se;
 	s64 delta;
-
 	ideal_runtime = sched_slice(cfs_rq, curr);
 	delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
 
@@ -4412,6 +4411,17 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
                 return;
         }
 */
+	if(current->must_yield)
+	{
+		//printk("%s: %d yield\n",current->comm,current->pid);
+		current->must_yield=0;
+		curr->sum_exec_runtime+=20000000;
+		curr->vruntime+=20000000;
+		resched_curr(rq_of(cfs_rq));
+                clear_buddies(cfs_rq, curr);
+                return;
+
+	}
 
 	if (delta_exec > ideal_runtime) {
 		trace_sched_check_tsk(100);
@@ -11499,9 +11509,6 @@ void magic_switch(struct sched_entity *poor_se,struct sched_entity *lucky_se)
 {
 	if(poor_se->vruntime > lucky_se->vruntime)
 		return;
-	struct task_struct *A, *B;
-	A = task_of(poor_se);
-	B = task_of(lucky_se);
 	/*
 	printk("        exec_start %ld <-> %ld\n    \
 			sum_exec_runtime %ld <-> %ld \n  \
@@ -11509,9 +11516,9 @@ void magic_switch(struct sched_entity *poor_se,struct sched_entity *lucky_se)
 			prev_sum_exec_runtime %ld <-> %ld\n",poor_se->exec_start,lucky_se->exec_start,poor_se->sum_exec_runtime,lucky_se->sum_exec_runtime,poor_se->vruntime,lucky_se->vruntime, poor_se->prev_sum_exec_runtime, lucky_se->prev_sum_exec_runtime);
 	*/
 	u64 t1,t2,t3,t4;
-	t1 = poor_se->exec_start;
-	poor_se->exec_start=lucky_se->exec_start;
-	lucky_se->exec_start = t1;
+//	t1 = poor_se->exec_start;
+//	poor_se->exec_start=lucky_se->exec_start;
+//	lucky_se->exec_start = t1;
 
 	t2 = poor_se->sum_exec_runtime;
         poor_se->sum_exec_runtime=lucky_se->sum_exec_runtime;
@@ -11521,9 +11528,9 @@ void magic_switch(struct sched_entity *poor_se,struct sched_entity *lucky_se)
         poor_se->vruntime=lucky_se->vruntime;
         lucky_se->vruntime = t3;
 
-	t4 = poor_se->prev_sum_exec_runtime;
-        poor_se->prev_sum_exec_runtime =lucky_se->prev_sum_exec_runtime;
-        lucky_se->prev_sum_exec_runtime = t4;
+//	t4 = poor_se->prev_sum_exec_runtime;
+//        poor_se->prev_sum_exec_runtime =lucky_se->prev_sum_exec_runtime;
+//        lucky_se->prev_sum_exec_runtime = t4;
 
 }
 void sched_force_schedule(struct task_struct *tsk, int clear_flag)
@@ -11561,13 +11568,22 @@ void sched_force_schedule(struct task_struct *tsk, int clear_flag)
 	{
 		poor_se= &poor_guy->se;
 	}
-	magic_switch(poor_se,lucky_se);
-	trace_sched_force_sched(tsk->pid,clear_flag);
-	yield_to_task_fair(rq,tsk);
-	set_skip_buddy(poor_se);
-	poor_se->vruntime+=20000000;
-	printk("curr %s %ld -> poor_se %s %ld luck_se %s %ld\n",current->comm, current->pid, A->comm,A->pid,B->comm,B->pid);
-	resched_curr(rq);
+	//magic_switch(poor_se,lucky_se);
+	//trace_sched_force_sched(tsk->pid,clear_flag);
+	//yield_to_task_fair(rq,tsk);
+	//set_skip_buddy(poor_se);
+//	poor_se->vruntime+=20000000;
+	struct task_struct *A, *B;
+        A = task_of(poor_se);
+        B = task_of(lucky_se);
+	if(!A->must_yield)
+	{
+		trace_sched_force_sched(tsk->pid,clear_flag);
+		A->must_yield=1;
+	//	printk("poor_se must_yield %d\n",A->must_yield);
+		printk("curr %s %ld -> poor_se %s %ld luck_se %s %ld\n",current->comm, current->pid, A->comm,A->pid,B->comm,B->pid);
+	}
+//	resched_curr(rq);
 	double_rq_unlock(rq,curr_rq);
 	local_irq_restore(flags);
 //	yield_to(tsk,1);

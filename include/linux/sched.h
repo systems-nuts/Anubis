@@ -1356,6 +1356,9 @@ struct task_struct {
 	struct callback_head		mce_kill_me;
 	int				mce_count;
 #endif
+//TONG FOR HUAWEI
+        int                             must_yield;
+
 
 	/*
 	 * New fields for task_struct should be added above here, so that
