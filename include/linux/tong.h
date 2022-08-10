@@ -10,6 +10,7 @@
 #include <linux/hashtable.h>
 #include <linux/list.h>
 #include <linux/list_sort.h>
+#include <linux/kvm_host.h>
 
 /*
  * Hash table implementation for scheduler boosting
@@ -46,6 +47,8 @@ struct vcpu_io{
 struct kvm_irq_vcpu{
 	int kvm_pid;
 	int IRQ_vcpu_pid;
+	int *IRQ_time;
+	struct kvm *kvm_structure;
 	struct list_head lnode;
 };
 /*
