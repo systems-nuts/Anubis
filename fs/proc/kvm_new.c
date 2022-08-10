@@ -14,6 +14,8 @@
 #include <linux/trace.h>
 #include <linux/log2.h>
 #include <linux/kvm_host.h>
+#include <linux/seq_file.h>
+#include <linux/kernel.h>
 #include <trace/events/sched.h>
 
 DECLARE_HASHTABLE(vvtbl,10);
@@ -22,6 +24,10 @@ static struct vcpu_io *vcpu_list;
 static struct kvm_irq_vcpu *irq_list;
 static int booster_pid;
 static int control;
+unsigned long long yield_level=0;
+unsigned long long yield_time=10000000;
+EXPORT_SYMBOL(yield_time);
+EXPORT_SYMBOL(yield_level);
 int list_table_vcpu_add(int pid1, int pid2, int id, int cpu)
 {
 	struct vcpu_io *entry;
@@ -594,6 +600,76 @@ EXPORT_SYMBOL(ctx_sw_flag);
 EXPORT_SYMBOL(cfs_record_exit);
 EXPORT_SYMBOL(cfs_record_run);
 
+static int yield_level_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "yield_level %d \n", yield_level);
+	return 0;
+}
+static int yield_level_open(struct inode *inode, struct file *filp)
+{
+        return single_open(filp, yield_level_show, NULL);
+}
+
+
+static ssize_t
+yield_level_write(struct file *filp, const char __user *ubuf,size_t cnt, loff_t *ppos)
+{
+	int ret;
+	unsigned long long res;
+	ret = kstrtoull_from_user(ubuf, cnt, 10, &res);
+	if (ret) {
+        	/* Negative error code. */
+		return ret;
+	} 
+	else 
+	{
+		yield_level=res;	
+		return cnt;
+	}
+}
+
+static int yield_level_show2(struct seq_file *m, void *v)
+{
+        seq_printf(m, "yield_time %d \n", yield_time);
+        return 0;
+}
+static int yield_level_open2(struct inode *inode, struct file *filp)
+{
+        return single_open(filp, yield_level_show2, NULL);
+}
+
+
+static ssize_t
+yield_level_write2(struct file *filp, const char __user *ubuf,size_t cnt, loff_t *ppos)
+{
+        int ret;
+        unsigned long long res;
+        ret = kstrtoull_from_user(ubuf, cnt, 10, &res);
+        if (ret) {
+                /* Negative error code. */
+                return ret;
+        }
+        else
+        {
+                yield_time=res;
+                return cnt;
+        }
+}
+
+
+static const struct proc_ops kvm_file_ops = 
+{
+	.proc_open = yield_level_open,
+	.proc_read = seq_read,
+	.proc_write = yield_level_write,
+};
+
+static const struct proc_ops kvm_file_ops2 =
+{
+        .proc_open = yield_level_open2,
+        .proc_read = seq_read,
+        .proc_write = yield_level_write2,
+};
 
 
 static int __init proc_cmdline_init(void)
@@ -615,7 +691,8 @@ static int __init proc_cmdline_init(void)
 	proc_create_single("IRQ_redirect",0 , NULL, irq_check);
 	proc_create_single("IRQ_redirect_log",0 , NULL, irq_check2);
 	proc_create_single("Check_IRQ_record",0 , NULL, cfs_ctx_sw_show);
-
+	proc_create("yield_level",0660,NULL,&kvm_file_ops);
+	proc_create("yield_time",0660,NULL,&kvm_file_ops2);
 
         return 0;
 }

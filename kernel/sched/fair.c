@@ -4391,6 +4391,8 @@ dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 //extern int cfs_boost_flag;
 //extern int check_cpu_boosting(int);
 extern int cfs_print_flag;
+extern unsigned long long yield_level;
+extern unsigned long long yield_time;
 static void
 check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 {
@@ -4411,16 +4413,15 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
                 return;
         }
 */
-	if(current->must_yield)
+	if(current->must_yield > yield_level)
 	{
-		//printk("%s: %d yield\n",current->comm,current->pid);
+		printk("%s: %d yield with %d\n",current->comm,current->pid,current->must_yield);
 		current->must_yield=0;
-		curr->sum_exec_runtime+=20000000;
-		curr->vruntime+=20000000;
+		curr->sum_exec_runtime+=yield_time;
+		curr->vruntime+=yield_time;
 		resched_curr(rq_of(cfs_rq));
                 clear_buddies(cfs_rq, curr);
                 return;
-
 	}
 
 	if (delta_exec > ideal_runtime) {
@@ -11576,13 +11577,10 @@ void sched_force_schedule(struct task_struct *tsk, int clear_flag)
 	struct task_struct *A, *B;
         A = task_of(poor_se);
         B = task_of(lucky_se);
-	if(!A->must_yield)
-	{
-		trace_sched_force_sched(tsk->pid,clear_flag);
-		A->must_yield=1;
+	trace_sched_force_sched(tsk->pid,clear_flag);
+	A->must_yield+=1;
 	//	printk("poor_se must_yield %d\n",A->must_yield);
-		printk("curr %s %ld -> poor_se %s %ld luck_se %s %ld\n",current->comm, current->pid, A->comm,A->pid,B->comm,B->pid);
-	}
+	//printk("curr %s %ld -> poor_se %s %ld luck_se %s %ld\n",current->comm, current->pid, A->comm,A->pid,B->comm,B->pid);
 //	resched_curr(rq);
 	double_rq_unlock(rq,curr_rq);
 	local_irq_restore(flags);
