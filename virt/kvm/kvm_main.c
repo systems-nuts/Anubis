@@ -67,7 +67,6 @@
 #define ITOA_MAX_LEN 12
 
 
-//extern int kvm_exit_clean_up(int pid);
 MODULE_AUTHOR("Qumranet");
 MODULE_LICENSE("GPL");
 
@@ -748,6 +747,7 @@ int __weak kvm_arch_post_init_vm(struct kvm *kvm)
 void __weak kvm_arch_pre_destroy_vm(struct kvm *kvm)
 {
 }
+extern int list_kvm_irq_list_add(int);
 
 static struct kvm *kvm_create_vm(unsigned long type)
 {
@@ -761,11 +761,6 @@ static struct kvm *kvm_create_vm(unsigned long type)
 	spin_lock_init(&kvm->mmu_lock);
 	mmgrab(current->mm);
 	kvm->mm = current->mm;
-	//Start Huawei
-	printk("KVM CREATE! PID: %d\n",current->pid);
-	//kvm_pids[pids_idx%1024]=current->pid;
-	//pids_idx++;
-	//Finish Huawei
 	kvm_eventfd_init(kvm);
 	mutex_init(&kvm->lock);
 	mutex_init(&kvm->irq_lock);
@@ -821,10 +816,14 @@ static struct kvm *kvm_create_vm(unsigned long type)
 
 	mutex_lock(&kvm_lock);
 	list_add(&kvm->vm_list, &vm_list);
+        //Start Huawei
+        printk("KVM CREATE! PID: %d\n",current->pid);
+        list_kvm_irq_list_add(current->pid);
+        //Finish Huawei
 	mutex_unlock(&kvm_lock);
 
 	preempt_notifier_inc();
-
+	
 	return kvm;
 
 out_err:
@@ -3729,7 +3728,6 @@ static int kvm_vm_ioctl_enable_cap_generic(struct kvm *kvm,
 		return kvm_vm_ioctl_enable_cap(kvm, cap);
 	}
 }
-
 static long kvm_vm_ioctl(struct file *filp,
 			   unsigned int ioctl, unsigned long arg)
 {

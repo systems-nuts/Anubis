@@ -42,6 +42,7 @@
 #include "cpuid.h"
 #include "hyperv.h"
 
+
 #ifndef CONFIG_X86_64
 #define mod_64(x, y) ((x) - (y) * div64_u64(x, y))
 #else
@@ -1340,6 +1341,8 @@ void kvm_apic_send_ipi(struct kvm_lapic *apic, u32 icr_low, u32 icr_high)
 	if(IRQ_redirect_log)
         {
                 trace_kvm_apic_ipi(icr_low, irq.dest_id);
+		trace_kvm_get_vcpu_CR3(kvm_read_cr3(apic->vcpu));
+		trace_kvm_get_vcpu_CR0_ts(kvm_read_cr0_bits(apic->vcpu, X86_CR0_TS));
         }
 
 	kvm_irq_delivery_to_apic(apic->vcpu->kvm, apic, &irq, NULL);

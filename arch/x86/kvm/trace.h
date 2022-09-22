@@ -1578,6 +1578,40 @@ TRACE_EVENT(kvm_hv_syndbg_get_msr,
 		  __entry->vcpu_id, __entry->vp_index, __entry->msr,
 		  __entry->data)
 );
+
+
+TRACE_EVENT(kvm_get_vcpu_CR3,
+            TP_PROTO(__u64 cr3),
+            TP_ARGS(cr3),
+
+        TP_STRUCT__entry(
+                __field(        __u64,  cr3     )
+        ),
+
+        TP_fast_assign(
+                __entry->cr3    =       cr3
+        ),
+
+        TP_printk("cr3: %llx", __entry->cr3)
+);
+
+TRACE_EVENT(kvm_get_vcpu_CR0_ts,
+            TP_PROTO(__u64 cr0),
+            TP_ARGS(cr0),
+
+        TP_STRUCT__entry(
+                __field(        __u64,  cr0     )
+        ),
+
+        TP_fast_assign(
+                __entry->cr0    =       cr0
+        ),
+
+        TP_printk("cr0.ts: %llx", __entry->cr0)
+);
+
+
+
 #endif /* _TRACE_KVM_H */
 
 #undef TRACE_INCLUDE_PATH

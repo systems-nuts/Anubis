@@ -803,16 +803,8 @@ static int kvm_assign_ioeventfd_idx(struct kvm *kvm,
 	struct eventfd_ctx *eventfd;
 	struct _ioeventfd *p;
 	int ret;
-	struct fd f;
-	struct file *myfile;
+
 	eventfd = eventfd_ctx_fdget(args->fd);
-	myfile = eventfd_fget(args->fd);
-	if(myfile)
-		printk("%s file name %s\n",__func__,myfile->f_path.dentry->d_iname);
-	else
-		printk("%s problem'\n",__func__);
-	f = fdget(args->fd);;
-	fdput(f);
 	if (IS_ERR(eventfd))
 		return PTR_ERR(eventfd);
 
