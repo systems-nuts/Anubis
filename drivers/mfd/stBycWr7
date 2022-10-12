@@ -1,0 +1,13 @@
+!<thin>
+//                                              92        `
+mfd-core.o/
+syscon.o/
+intel_soc_pmic_core.o/
+intel_soc_pmic_crc.o/
+intel_soc_pmic_chtwc.o/
+
+/0              0           0     0     644     17528     `
+/12             0           0     0     644     12664     `
+/22             0           0     0     644     9328      `
+/45             0           0     0     644     5216      `
+/67             0           0     0     644     10248     `

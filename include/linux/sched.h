@@ -1358,6 +1358,13 @@ struct task_struct {
 #endif
 //TONG FOR HUAWEI
         int                             must_yield;
+	struct task_struct              *yield_to;
+    __u64                   yield_time_record;
+	int				yield_by;
+    __u64               lucky_time;
+    int                 lucky_guy;
+
+	int 				fake_yield;
 
 
 	/*

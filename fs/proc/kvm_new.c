@@ -116,6 +116,7 @@ int check_irq_vcpu(int vcpu_vpid, int curr_kvm)
 	return 0;
 
 }
+//TODO find the longest life one intsead of just check if it is running
 
 int kvm_vcpu_young(struct kvm *kvm, int dest_id)
 {
@@ -123,8 +124,8 @@ int kvm_vcpu_young(struct kvm *kvm, int dest_id)
 	struct kvm_vcpu *vcpu;
 	struct list_head *pos;
 	struct kvm_irq_vcpu *irq;
-        struct vcpu_io *entry;
-        struct task_struct *IO_vcpu;
+    struct vcpu_io *entry;
+    struct task_struct *IO_vcpu;
 	int ret = 0, irq_vcpu=0, vcpuID=0;
 	if(dest_id > 8)
 		dest_id = 8; 
@@ -489,8 +490,59 @@ static int cfs_print(struct seq_file *m, void *v)
 }
 int IRQ_redirect=0;
 int IRQ_redirect_log=0;
+int fake_yield_flag=0;
+int vcfs_timer=0;
+int vcfs_timer2=0;
+int vcfs_timer3=0;
+
+EXPORT_SYMBOL(vcfs_timer3);
+
+EXPORT_SYMBOL(vcfs_timer);
+EXPORT_SYMBOL(vcfs_timer2);
+EXPORT_SYMBOL(fake_yield_flag);
 EXPORT_SYMBOL(IRQ_redirect);
 EXPORT_SYMBOL(IRQ_redirect_log);
+
+static int time_check(struct seq_file *m, void *v)
+{
+        if(vcfs_timer)
+            vcfs_timer=0;
+        else
+            vcfs_timer=1;
+        seq_printf(m, "vcfs_timer %d\n",vcfs_timer);
+        return 0;
+}
+
+static int time_check2(struct seq_file *m, void *v)
+{
+        if(vcfs_timer2)
+            vcfs_timer2=0;
+        else
+            vcfs_timer2=1;
+        seq_printf(m, "vcfs_timer2 %d\n",vcfs_timer2);
+        return 0;
+}
+static int time_check3(struct seq_file *m, void *v)
+{
+        if(vcfs_timer3)
+            vcfs_timer3=0;
+        else
+            vcfs_timer3=1;
+        seq_printf(m, "vcfs_timer3 %d\n",vcfs_timer3);
+        return 0;
+}
+
+
+static int fake_yield(struct seq_file *m, void *v)
+{
+        if(fake_yield_flag)
+                fake_yield_flag=0;
+        else
+		fake_yield_flag=1;
+        seq_printf(m, "fake_yield_flag %d\n",fake_yield_flag);
+        return 0;
+}
+
 static int irq_check2(struct seq_file *m, void *v)
 {
         if(IRQ_redirect_log)
@@ -691,6 +743,11 @@ static int __init proc_cmdline_init(void)
 	proc_create_single("IRQ_redirect",0 , NULL, irq_check);
 	proc_create_single("IRQ_redirect_log",0 , NULL, irq_check2);
 	proc_create_single("Check_IRQ_record",0 , NULL, cfs_ctx_sw_show);
+	proc_create_single("Fake_yield_flag",0 , NULL, fake_yield);
+    proc_create_single("Vcfs_timer",0 , NULL, time_check);
+    proc_create_single("Vcfs_timer2",0 , NULL, time_check2);
+    proc_create_single("Vcfs_timer3",0 , NULL, time_check3);
+
 	proc_create("yield_level",0660,NULL,&kvm_file_ops);
 	proc_create("yield_time",0660,NULL,&kvm_file_ops2);
 

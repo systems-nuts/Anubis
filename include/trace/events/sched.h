@@ -49,6 +49,52 @@ TRACE_EVENT(sched_force_sched,
 
         TP_printk("cpu %d clear %d",__entry->cpu, __entry->ret)
 );
+
+TRACE_EVENT(sched_try_wake,
+
+        TP_PROTO(__u64 ktime,int svcpu, int dvcpu),
+
+        TP_ARGS(ktime,svcpu,dvcpu),
+
+        TP_STRUCT__entry(
+                __field(        __u64,    ktime    )
+                __field(        int,    svcpu     )
+		__field(        int,    dvcpu     )
+        ),
+
+        TP_fast_assign(
+                __entry->ktime    = ktime;
+		__entry->svcpu    = svcpu;
+		__entry->dvcpu    = dvcpu;
+        ),
+
+        TP_printk("%llu svcpu %d dvcpu %d",__entry->ktime, __entry->svcpu, __entry->dvcpu)
+);
+
+TRACE_EVENT(sched_do_wake,
+
+        TP_PROTO(__u64 ktime,int svcpu, int dvcpu, int yield),
+
+        TP_ARGS(ktime,svcpu,dvcpu,yield),
+
+        TP_STRUCT__entry(
+                __field(        __u64,    ktime    )
+                __field(        int,    svcpu     )
+                __field(        int,    dvcpu     )
+		__field(        int,    yield     )
+        ),
+
+        TP_fast_assign(
+                __entry->ktime    = ktime;
+                __entry->svcpu    = svcpu;
+                __entry->dvcpu    = dvcpu;
+		__entry->yield	  = yield;
+        ),
+
+        TP_printk("%llu yield %d svcpu %d dvcpu %d",__entry->ktime,__entry->yield, __entry->svcpu, __entry->dvcpu)
+);
+
+
 TRACE_EVENT(sched_check_tsk,
 
         TP_PROTO(int ret),
@@ -488,6 +534,46 @@ DEFINE_EVENT(sched_stat_runtime, sched_stat_runtime,
 	     TP_PROTO(struct task_struct *tsk, u64 runtime, u64 vruntime),
 	     TP_ARGS(tsk, runtime, vruntime));
 
+/*for time slice check*/
+DECLARE_EVENT_CLASS(sched_vcpu_runtime,
+
+        TP_PROTO(struct task_struct *tsk, u64 runtime, u64 vruntime),
+
+        TP_ARGS(tsk, __perf_count(runtime), vruntime),
+
+        TP_STRUCT__entry(
+            __array( char,  comm,   TASK_COMM_LEN   )
+            __field( pid_t, pid         )
+            __field( u64,   runtime         )
+            __field( u64,   vruntime            )
+        ),
+
+        TP_fast_assign(
+            memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
+            __entry->pid        = tsk->pid;
+            __entry->runtime    = runtime;
+            __entry->vruntime   = vruntime;
+        ),
+
+        TP_printk("comm=%s pid=%d runtime=%Lu [ns] ideatime=%Lu [ns]",
+                __entry->comm, __entry->pid,
+                (unsigned long long)__entry->runtime,
+                (unsigned long long)__entry->vruntime)
+
+);
+
+DEFINE_EVENT(sched_vcpu_runtime, sched_vcpu_runtime,
+         TP_PROTO(struct task_struct *tsk, u64 runtime, u64 vruntime),
+         TP_ARGS(tsk, runtime, vruntime));
+
+
+
+
+
+
+
+
+/*tong end*/
 /*
  * Tracepoint for showing priority inheritance modifying a tasks
  * priority.

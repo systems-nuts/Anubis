@@ -1578,6 +1578,48 @@ TRACE_EVENT(kvm_hv_syndbg_get_msr,
 		  __entry->vcpu_id, __entry->vp_index, __entry->msr,
 		  __entry->data)
 );
+//FOR anlysis v-CFS work OCT 2, Tong 
+//
+TRACE_EVENT(kvm_irq_time_get,
+            TP_PROTO(__u64 ktime, int vcpu, int kvm_pid),
+            TP_ARGS(ktime, vcpu, kvm_pid),
+
+        TP_STRUCT__entry(
+                __field(        __u64,  ktime   )
+		__field(	int, vcpu	)
+		__field(	int, kvm_pid	)
+        ),
+
+        TP_fast_assign(
+                __entry->ktime = ktime;
+		__entry->vcpu = vcpu;
+		__entry->kvm_pid = kvm_pid;
+        ),
+
+        TP_printk("%llx vcpu %d kvm %d", __entry->ktime, __entry->vcpu, __entry->kvm_pid)
+);
+
+TRACE_EVENT(kvm_ipi_time_get,
+            TP_PROTO(__u64 ktime, int svcpu,int dvcpu, int kvm_pid),
+            TP_ARGS(ktime, svcpu, dvcpu, kvm_pid),
+
+        TP_STRUCT__entry(
+                __field(        __u64,  ktime    )
+                __field(        int, svcpu       )
+		__field(        int, dvcpu       )
+                __field(        int, kvm_pid    )
+        ),
+
+        TP_fast_assign(
+                __entry->ktime = ktime;
+                __entry->svcpu = svcpu;
+		__entry->dvcpu = dvcpu;
+                __entry->kvm_pid = kvm_pid;
+        ),
+
+        TP_printk("%llx svcpu %d dvcpu %d kvm %d", __entry->ktime, __entry->svcpu, __entry->dvcpu, __entry->kvm_pid)
+);
+
 
 
 TRACE_EVENT(kvm_get_vcpu_CR3,
@@ -1610,6 +1652,20 @@ TRACE_EVENT(kvm_get_vcpu_CR0_ts,
         TP_printk("cr0.ts: %llx", __entry->cr0)
 );
 
+TRACE_EVENT(kvm_vcpu_tsc_req,
+            TP_PROTO(__u64 cr0),
+            TP_ARGS(cr0),
+
+        TP_STRUCT__entry(
+                __field(        __u64,  cr0     )
+        ),
+
+        TP_fast_assign(
+                __entry->cr0    =       cr0
+        ),
+
+        TP_printk("tsc: %llx", __entry->cr0)
+);
 
 
 #endif /* _TRACE_KVM_H */

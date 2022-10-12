@@ -1333,10 +1333,15 @@ void kvm_apic_send_ipi(struct kvm_lapic *apic, u32 icr_low, u32 icr_high)
 	else
 		irq.dest_id = GET_APIC_DEST_FIELD(icr_high);
 	
+
+	trace_kvm_ipi_time_get(ktime_get(),current->pid,
+					irq.dest_id,
+        (int)apic->vcpu->kvm->userspace_pid);	
 	if(cfs_print_flag)
 	{
 		boost_IO_vcpu(current->pid,irq.dest_id);
 		//trace_kvm_apic_ipi(icr_low, irq.dest_id);
+		
 	}
 	if(IRQ_redirect_log)
         {

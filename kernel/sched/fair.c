@@ -698,6 +698,7 @@ static u64 __sched_period(unsigned long nr_running)
  *
  * s = p*P[w/rw]
  */
+extern int vcfs_timer3; 
 static u64 sched_slice(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
 	unsigned int nr_running = cfs_rq->nr_running;
@@ -721,8 +722,12 @@ static u64 sched_slice(struct cfs_rq *cfs_rq, struct sched_entity *se)
 			update_load_add(&lw, se->load.weight);
 			load = &lw;
 		}
-		slice = __calc_delta(slice, se->load.weight, load);
-	}
+        
+        if(!vcfs_timer3)
+        {
+		        slice = __calc_delta(slice, se->load.weight, load);
+        }
+	}   
 
 	if (sched_feat(BASE_SLICE))
 		slice = max(slice, (u64)sysctl_sched_min_granularity);
@@ -877,6 +882,8 @@ static void update_curr(struct cfs_rq *cfs_rq)
 		struct task_struct *curtask = task_of(curr);
 
 		trace_sched_stat_runtime(curtask, delta_exec, curr->vruntime);
+        trace_sched_vcpu_runtime(curtask, delta_exec, sched_slice(cfs_rq, curr));
+
 		cgroup_account_cputime(curtask, delta_exec);
 		account_group_exec_runtime(curtask, delta_exec);
 	}
@@ -4387,21 +4394,30 @@ dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 /*
  * Preempt the current task with a newly woken task if needed:
  */
+static void set_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *se);
+static void set_skip_buddy(struct sched_entity *se);
 //Huawei boosting 
 //extern int cfs_boost_flag;
 //extern int check_cpu_boosting(int);
 extern int cfs_print_flag;
+extern int vcfs_timer;
+extern int vcfs_timer2;
+
 extern unsigned long long yield_level;
 extern unsigned long long yield_time;
+
+
+//TODO  OCT 3 2022 Tong at home: also count the time if it reschedule natually. 
 static void
 check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 {
 	unsigned long ideal_runtime, delta_exec;
 	struct sched_entity *se;
+    struct task_struct *tsk;
 	s64 delta;
 	ideal_runtime = sched_slice(cfs_rq, curr);
 	delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
-
+  
 //	if(cfs_print_flag && cfs_rq->rq->cpu == 3)
 //		printk("cpu %d ideal_runtime %lu delta_exec %lu sysctl_sched_min_granularity %lu \n",cfs_rq->rq->cpu, ideal_runtime, delta_exec, sysctl_sched_min_granularity);
 /*
@@ -4413,25 +4429,92 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
                 return;
         }
 */
+    if (vcfs_timer2)
+    {
+        //if I'm lucky guy
+        if(current->lucky_guy)
+        {
+            //this force the lucky guy will run at least 4ms by premptive
+            if(ktime_get()-current->lucky_time < 4000000 )
+            {
+//                printk("[vcfs-debug] %d keep lucky in %llu ns\n"
+ //                   ,current->pid,ktime_get()-current->lucky_time);
+                return;
+            }
+            else 
+            {
+                goto byebye;
+            }
+        }
+
+    }
+
 	if(current->must_yield > yield_level)
 	{
-		printk("%s: %d yield with %d\n",current->comm,current->pid,current->must_yield);
-		current->must_yield=0;
-		curr->sum_exec_runtime+=yield_time;
-		curr->vruntime+=yield_time;
+	//	printk("%s: %d yield with %d\n",current->comm,current->pid,current->must_yield);
+		trace_sched_do_wake(ktime_get(),current->yield_by,current->yield_to->pid,current->must_yield);
+        if(vcfs_timer)
+            printk("[vcfs-debug] %d yield to %d %d time(s) by %d cost %llu ns\n"
+            ,current->pid,current->yield_to->pid,current->must_yield,current->yield_by,ktime_get()-current->yield_time_record);
+
+        if(current->must_yield>2 || ktime_get() - current->yield_time_record > 3900000)
+        {
+            se = __pick_first_entity(cfs_rq); 
+            if(!se) return;
+            if (se != &current->yield_to->se)
+            {
+                set_skip_buddy(se);
+                current->yield_to->se.sum_exec_runtime = se->sum_exec_runtime;
+                current->yield_to->se.vruntime = se->vruntime;
+                update_curr(cfs_rq);
+            }
+        }
+		curr->sum_exec_runtime+=yield_time+1000000*current->must_yield;
+        current->must_yield=0;
+		curr->vruntime+=yield_time+1000000*current->must_yield;
+        //we set the start time that the lucky se going to preempty the poor se
+        //only poor se will got this function
+        if (!current->yield_to->lucky_guy)
+            current->yield_to->lucky_time= ktime_get();
+            current->yield_to->lucky_guy = 1;
+
 		resched_curr(rq_of(cfs_rq));
-                clear_buddies(cfs_rq, curr);
-                return;
+        clear_buddies(cfs_rq, curr);
+        return;
 	}
 
+byebye:
+
 	if (delta_exec > ideal_runtime) {
-		trace_sched_check_tsk(100);
+
+		if(current->fake_yield)
+		{
+			trace_sched_do_wake(ktime_get(),current->yield_by,current->yield_to->pid,current->fake_yield);
+            if(vcfs_timer)
+                printk("[vcfs-debug] %d fake-yield to %d %d time(s) by %d cost %llu ns\n"
+                ,current->pid,current->yield_to->pid,current->fake_yield,current->yield_by,ktime_get()-current->yield_time_record);
+
+			current->fake_yield=0;
+            //if we are lucky guy, poor guy already yield for a while, and OS want us yield now
+            //vCFS need check if it yield enough time
+
+		}
+        //If passed to here, which means I used all of my lucky already
+        if(current->lucky_guy && vcfs_timer2)
+        {
+        //I'm not lucky guy anymore and I will yield then
+            current->lucky_guy = 0;
+            printk("[vcfs-debug] %d finish lucky in %llu ns\n"
+                ,current->pid,ktime_get()-current->lucky_time);
+        }
+
 		resched_curr(rq_of(cfs_rq));
 		/*
 		 * The current task ran long enough, ensure it doesn't get
 		 * re-elected due to buddy favours.
 		 */
 		clear_buddies(cfs_rq, curr);
+		
 		return;
 	}
 
@@ -4442,10 +4525,8 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	 */
 	if (delta_exec < sysctl_sched_min_granularity)
 	{
-		trace_sched_check_tsk(200);
 		return;
 	}
-
 
 
 
@@ -4454,13 +4535,28 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 
 	if (delta < 0)
 	{
-		trace_sched_check_tsk(300);
 		return;
 	}
 
 	if (delta > ideal_runtime)
 	{
-		trace_sched_check_tsk(400);
+		if(current->fake_yield)
+        {
+            trace_sched_do_wake(ktime_get(),current->yield_by,current->yield_to->pid,current->fake_yield);
+            if(vcfs_timer)
+                printk("[vcfs-debug] %d fake-yield to %d %d time(s) by %d cost %llu ns\n"
+                ,current->pid,current->yield_to->pid,current->fake_yield,current->yield_by,ktime_get()-current->yield_time_record);
+            current->fake_yield=0;
+        }
+
+        if(current->lucky_guy && vcfs_timer2)
+        {
+        //I'm not lucky guy anymore and I will yield then
+            current->lucky_guy = 0;
+            printk("[vcfs-debug] %d finish lucky in %llu ns\n"
+                ,current->pid,ktime_get()-current->lucky_time);
+        }
+
 		resched_curr(rq_of(cfs_rq));
 	}
 }
@@ -11534,6 +11630,7 @@ void magic_switch(struct sched_entity *poor_se,struct sched_entity *lucky_se)
 //        lucky_se->prev_sum_exec_runtime = t4;
 
 }
+extern int  fake_yield_flag;
 void sched_force_schedule(struct task_struct *tsk, int clear_flag)
 {
 	struct cfs_rq *cfs_rq;
@@ -11575,11 +11672,35 @@ void sched_force_schedule(struct task_struct *tsk, int clear_flag)
 	//set_skip_buddy(poor_se);
 //	poor_se->vruntime+=20000000;
 	struct task_struct *A, *B;
-        A = task_of(poor_se);
-        B = task_of(lucky_se);
+    A = task_of(poor_se);
+    B = task_of(lucky_se);
 	trace_sched_force_sched(tsk->pid,clear_flag);
-	A->must_yield+=1;
+	
+	if(fake_yield_flag)
+	{
+		if(A->fake_yield==0)
+		{
+			trace_sched_try_wake(ktime_get(),current->pid,B->pid);
+			A->yield_by = current->pid;
+			A->yield_to = tsk;
+            A->yield_time_record=ktime_get();
+		}
+		A->fake_yield+=1;
+
+	}
+	else
+	{
+		if(A->must_yield==0)
+		{
+			trace_sched_try_wake(ktime_get(),current->pid,B->pid);
+			A->yield_by = current->pid;
+			A->yield_to = tsk;
+            A->yield_time_record=ktime_get();
+		}
+		A->must_yield+=1;
+	}
 	//	printk("poor_se must_yield %d\n",A->must_yield);
+	//
 	//printk("curr %s %ld -> poor_se %s %ld luck_se %s %ld\n",current->comm, current->pid, A->comm,A->pid,B->comm,B->pid);
 //	resched_curr(rq);
 	double_rq_unlock(rq,curr_rq);

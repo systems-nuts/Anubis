@@ -23,7 +23,7 @@
 #include "ioapic.h"
 
 #include "lapic.h"
-
+#include "trace.h"
 #include "hyperv.h"
 #include "x86.h"
 
@@ -181,19 +181,34 @@ int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
 		kvm_set_msi_irq(kvm, e, &irq);
 	        if(IRQ_redirect)
         	{
+
 			dest=kvm_vcpu_young(kvm,irq.dest_id);
 			if(dest)
 			{
 				irq.dest_id = dest;
+				trace_kvm_irq_time_get(ktime_get(),
+				kvm->vcpus[order_base_2(irq.dest_id)]->pid->numbers[0].nr,
+                                                (int)kvm->userspace_pid);
 			}
 			else
 			{
 				if(irq.dest_id > 8)
 	                                irq.dest_id = 8;
+				trace_kvm_irq_time_get(ktime_get(),
+                                kvm->vcpus[order_base_2(irq.dest_id)]->pid->numbers[0].nr,
+                                                (int)kvm->userspace_pid);
         	                boost_IRQ_vcpu(kvm->vcpus[order_base_2(irq.dest_id)]->pid->numbers[0].nr);
 			}
 //			printk(" %s after irq dest_id %u vector %u\n",__func__,irq.dest_id,irq.vector);
         	}
+		else
+		{
+			if(irq.dest_id > 8)
+                                        irq.dest_id = 8;
+			  trace_kvm_irq_time_get(ktime_get(),
+                                kvm->vcpus[order_base_2(irq.dest_id)]->pid->numbers[0].nr,
+                                                (int)kvm->userspace_pid);
+		}
 	        trace_kvm_msi_set_irq(e->msi.address_lo | (kvm->arch.x2apic_format ?
                                            (u64)e->msi.address_hi << 32 : 0),
                            e->msi.data);
