@@ -722,10 +722,15 @@ static u64 sched_slice(struct cfs_rq *cfs_rq, struct sched_entity *se)
 			update_load_add(&lw, se->load.weight);
 			load = &lw;
 		}
-        
-        if(!vcfs_timer3)
+        slice = __calc_delta(slice, se->load.weight, load);    
+        if(vcfs_timer3)
         {
-		        slice = __calc_delta(slice, se->load.weight, load);
+            struct task_struct *curtask = task_of(se);
+            if(curtask)
+                if(curtask -> lucky_guy) //if I'm lucky guy 
+                {
+                    return 18000000UL;
+                }
         }
 	}   
 
@@ -882,7 +887,7 @@ static void update_curr(struct cfs_rq *cfs_rq)
 		struct task_struct *curtask = task_of(curr);
 
 		trace_sched_stat_runtime(curtask, delta_exec, curr->vruntime);
-        trace_sched_vcpu_runtime(curtask, delta_exec, sched_slice(cfs_rq, curr));
+        //trace_sched_vcpu_runtime(curtask, delta_exec, sched_slice(cfs_rq, curr));
 
 		cgroup_account_cputime(curtask, delta_exec);
 		account_group_exec_runtime(curtask, delta_exec);
@@ -4413,11 +4418,13 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 {
 	unsigned long ideal_runtime, delta_exec;
 	struct sched_entity *se;
-    struct task_struct *tsk;
+    struct task_struct *tsk, *curtask;
 	s64 delta;
 	ideal_runtime = sched_slice(cfs_rq, curr);
 	delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
-  
+    curtask = task_of(curr);
+    if(curtask)
+        trace_sched_vcpu_runtime(curtask, delta_exec, ideal_runtime); 
 //	if(cfs_print_flag && cfs_rq->rq->cpu == 3)
 //		printk("cpu %d ideal_runtime %lu delta_exec %lu sysctl_sched_min_granularity %lu \n",cfs_rq->rq->cpu, ideal_runtime, delta_exec, sysctl_sched_min_granularity);
 /*
@@ -4429,6 +4436,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
                 return;
         }
 */
+/*
     if (vcfs_timer2)
     {
         //if I'm lucky guy
@@ -4448,7 +4456,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
         }
 
     }
-
+*/
 	if(current->must_yield > yield_level)
 	{
 	//	printk("%s: %d yield with %d\n",current->comm,current->pid,current->must_yield);
@@ -4476,8 +4484,9 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
         //only poor se will got this function
         if (!current->yield_to->lucky_guy)
             current->yield_to->lucky_time= ktime_get();
-            current->yield_to->lucky_guy = 1;
-
+            current->yield_to->lucky_guy += 3;
+        if(curtask)
+            trace_sched_vcpu_runtime3(curtask, delta_exec, ideal_runtime); 
 		resched_curr(rq_of(cfs_rq));
         clear_buddies(cfs_rq, curr);
         return;
@@ -4500,14 +4509,15 @@ byebye:
 
 		}
         //If passed to here, which means I used all of my lucky already
-        if(current->lucky_guy && vcfs_timer2)
+        if(current->lucky_guy)
         {
         //I'm not lucky guy anymore and I will yield then
-            current->lucky_guy = 0;
-            printk("[vcfs-debug] %d finish lucky in %llu ns\n"
-                ,current->pid,ktime_get()-current->lucky_time);
+            current->lucky_guy = 0 ;
+         //   printk("[vcfs-debug] %d finish lucky in %llu ns\n"
+           //     ,current->pid,ktime_get()-current->lucky_time);
         }
-
+        if(curtask)
+            trace_sched_vcpu_runtime3(curtask, delta_exec, ideal_runtime);
 		resched_curr(rq_of(cfs_rq));
 		/*
 		 * The current task ran long enough, ensure it doesn't get
@@ -4532,7 +4542,8 @@ byebye:
 
 	se = __pick_first_entity(cfs_rq);
 	delta = curr->vruntime - se->vruntime;
-
+    if(curtask)
+        trace_sched_vcpu_runtime2(curtask, delta, ideal_runtime);
 	if (delta < 0)
 	{
 		return;
@@ -4549,14 +4560,16 @@ byebye:
             current->fake_yield=0;
         }
 
-        if(current->lucky_guy && vcfs_timer2)
+        if(current->lucky_guy)
         {
         //I'm not lucky guy anymore and I will yield then
-            current->lucky_guy = 0;
-            printk("[vcfs-debug] %d finish lucky in %llu ns\n"
-                ,current->pid,ktime_get()-current->lucky_time);
+            current->lucky_guy -= 1;
+            //printk("[vcfs-debug] %d finish lucky in %llu ns but I will let it run more\n"
+              //  ,current->pid,ktime_get()-current->lucky_time);
+            return; 
         }
-
+        if(curtask)
+            trace_sched_vcpu_runtime3(curtask, delta, ideal_runtime);
 		resched_curr(rq_of(cfs_rq));
 	}
 }

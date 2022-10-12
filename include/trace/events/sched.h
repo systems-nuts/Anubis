@@ -568,8 +568,68 @@ DEFINE_EVENT(sched_vcpu_runtime, sched_vcpu_runtime,
 
 
 
+DECLARE_EVENT_CLASS(sched_vcpu_runtime2,
+
+        TP_PROTO(struct task_struct *tsk, s64 runtime, u64 vruntime),
+
+        TP_ARGS(tsk, __perf_count(runtime), vruntime),
+
+        TP_STRUCT__entry(
+            __array( char,  comm,   TASK_COMM_LEN   )
+            __field( pid_t, pid         )
+            __field( s64,   runtime         )
+            __field( u64,   vruntime            )
+        ),
+
+        TP_fast_assign(
+            memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
+            __entry->pid        = tsk->pid;
+            __entry->runtime    = runtime;
+            __entry->vruntime   = vruntime;
+        ),
+
+        TP_printk("comm=%s pid=%d runtime=%Lu [ns] ideatime=%Lu [ns]",
+                __entry->comm, __entry->pid,
+                (signed long long)__entry->runtime,
+                (unsigned long long)__entry->vruntime)
+
+);
+
+DEFINE_EVENT(sched_vcpu_runtime2, sched_vcpu_runtime2,
+         TP_PROTO(struct task_struct *tsk, s64 runtime, u64 vruntime),
+         TP_ARGS(tsk, runtime, vruntime));
 
 
+DECLARE_EVENT_CLASS(sched_vcpu_runtime3,
+
+        TP_PROTO(struct task_struct *tsk, s64 runtime, u64 vruntime),
+
+        TP_ARGS(tsk, __perf_count(runtime), vruntime),
+
+        TP_STRUCT__entry(
+            __array( char,  comm,   TASK_COMM_LEN   )
+            __field( pid_t, pid         )
+            __field( s64,   runtime         )
+            __field( u64,   vruntime            )
+        ),
+
+        TP_fast_assign(
+            memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
+            __entry->pid        = tsk->pid;
+            __entry->runtime    = runtime;
+            __entry->vruntime   = vruntime;
+        ),
+
+        TP_printk("comm=%s pid=%d runtime=%Lu [ns] ideatime=%Lu [ns]",
+                __entry->comm, __entry->pid,
+                (signed long long)__entry->runtime,
+                (unsigned long long)__entry->vruntime)
+
+);
+
+DEFINE_EVENT(sched_vcpu_runtime3, sched_vcpu_runtime3,
+         TP_PROTO(struct task_struct *tsk, s64 runtime, u64 vruntime),
+         TP_ARGS(tsk, runtime, vruntime));
 
 
 
