@@ -727,7 +727,7 @@ static u64 sched_slice(struct cfs_rq *cfs_rq, struct sched_entity *se)
         {
             struct task_struct *curtask = task_of(se);
             if(curtask)
-                if(curtask -> lucky_guy) //if I'm lucky guy 
+                if(curtask->lucky_guy > 0) //if I'm lucky guy 
                 {
                     return 18000000UL;
                 }
@@ -4413,58 +4413,52 @@ extern unsigned long long yield_time;
 
 
 //TODO  OCT 3 2022 Tong at home: also count the time if it reschedule natually. 
+// OCT 13  Tong
+// @UoE
+// For the CPU+IO case, the boost vcpu will be preemptived in last check, 
+// vruntime comparision, why? -> needs to figure out TODO
+// Very few case it would be preemptive because it finish it ideal runtime
+// only the case it doesn't run the CPU-intensive work inside the vcpu
+// Which means, in such case, the vruntime accountment is slower because some load weight 
+// Thus, to prove our observation, if the vcpu got boost 
+// 1. the one should yield should yield immediately, but it should run at least 2ms->MIN 
+// 2. after the one should yield, the lucky guy should be fine to ignore all the vruntime
+// but only can be deschedule because of the idealtime, so we make sure it run enough
+// 3. For the boost, we put a nice idealtime for it. 
 static void
 check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 {
 	unsigned long ideal_runtime, delta_exec;
 	struct sched_entity *se;
-    struct task_struct *tsk, *curtask;
+    struct task_struct *tsk, *curtask, *yield_to_task;
 	s64 delta;
 	ideal_runtime = sched_slice(cfs_rq, curr);
 	delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
     curtask = task_of(curr);
-    if(curtask)
-        trace_sched_vcpu_runtime(curtask, delta_exec, ideal_runtime); 
-//	if(cfs_print_flag && cfs_rq->rq->cpu == 3)
-//		printk("cpu %d ideal_runtime %lu delta_exec %lu sysctl_sched_min_granularity %lu \n",cfs_rq->rq->cpu, ideal_runtime, delta_exec, sysctl_sched_min_granularity);
-/*
-	if(cfs_boost_flag && check_cpu_boosting(cfs_rq->rq->cpu))
-        {
-                resched_curr(rq_of(cfs_rq));
-                // Increase context switch to allow more I/O interrupt handle
-                clear_buddies(cfs_rq, curr);
-                return;
-        }
-*/
-/*
-    if (vcfs_timer2)
+
+    if(vcfs_timer2)
     {
-        //if I'm lucky guy
+        // We put a nice ideal time for the case it needs run
         if(current->lucky_guy)
         {
-            //this force the lucky guy will run at least 4ms by premptive
-            if(ktime_get()-current->lucky_time < 4000000 )
-            {
-//                printk("[vcfs-debug] %d keep lucky in %llu ns\n"
- //                   ,current->pid,ktime_get()-current->lucky_time);
-                return;
-            }
-            else 
-            {
-                goto byebye;
-            }
+            ideal_runtime = 18000000UL + current->lucky_guy * 1000000UL;
         }
 
     }
-*/
+    // if the one needs to yield, it yield. 
 	if(current->must_yield > yield_level)
 	{
-	//	printk("%s: %d yield with %d\n",current->comm,current->pid,current->must_yield);
+        //however, we gurantee it run at least in min granularity time, 2ms
+        if (delta_exec < sysctl_sched_min_granularity)
+        {
+            return;
+        }
+        /*
 		trace_sched_do_wake(ktime_get(),current->yield_by,current->yield_to->pid,current->must_yield);
         if(vcfs_timer)
             printk("[vcfs-debug] %d yield to %d %d time(s) by %d cost %llu ns\n"
             ,current->pid,current->yield_to->pid,current->must_yield,current->yield_by,ktime_get()-current->yield_time_record);
-
+        
         if(current->must_yield>2 || ktime_get() - current->yield_time_record > 3900000)
         {
             se = __pick_first_entity(cfs_rq); 
@@ -4477,25 +4471,25 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
                 update_curr(cfs_rq);
             }
         }
-		curr->sum_exec_runtime+=yield_time+1000000*current->must_yield;
-        current->must_yield=0;
-		curr->vruntime+=yield_time+1000000*current->must_yield;
-        //we set the start time that the lucky se going to preempty the poor se
-        //only poor se will got this function
-        if (!current->yield_to->lucky_guy)
-            current->yield_to->lucky_time= ktime_get();
-            current->yield_to->lucky_guy += 3;
+        */
+        
+        //For yield, we fake it, to let the CFS think it already run enough time
+		curr->sum_exec_runtime = curr->prev_sum_exec_runtime + ideal_runtime + 1000000;
+        current->must_yield-=1;
+		curr->vruntime+= ideal_runtime + 1000000;
+        //We set the one to yield as lucky guy, and lucky guy will enjoy higher time slice
+        current->yield_to->lucky_guy += 1;
         if(curtask)
-            trace_sched_vcpu_runtime3(curtask, delta_exec, ideal_runtime); 
+            trace_sched_vcpu_runtime(curtask, delta_exec, ideal_runtime); 
 		resched_curr(rq_of(cfs_rq));
         clear_buddies(cfs_rq, curr);
         return;
 	}
 
-byebye:
-
+    //This is a tricky one, we should just let boost vcpu deschedule after it enjoy it time
+    //We shouldn't re-boost it again in this check. Otherwise it creates stravation
 	if (delta_exec > ideal_runtime) {
-
+        /*
 		if(current->fake_yield)
 		{
 			trace_sched_do_wake(ktime_get(),current->yield_by,current->yield_to->pid,current->fake_yield);
@@ -4508,16 +4502,12 @@ byebye:
             //vCFS need check if it yield enough time
 
 		}
+        */
         //If passed to here, which means I used all of my lucky already
         if(current->lucky_guy)
         {
-        //I'm not lucky guy anymore and I will yield then
-            current->lucky_guy = 0 ;
-         //   printk("[vcfs-debug] %d finish lucky in %llu ns\n"
-           //     ,current->pid,ktime_get()-current->lucky_time);
+            current->lucky_guy -=1 ;
         }
-        if(curtask)
-            trace_sched_vcpu_runtime3(curtask, delta_exec, ideal_runtime);
 		resched_curr(rq_of(cfs_rq));
 		/*
 		 * The current task ran long enough, ensure it doesn't get
@@ -4538,12 +4528,8 @@ byebye:
 		return;
 	}
 
-
-
 	se = __pick_first_entity(cfs_rq);
 	delta = curr->vruntime - se->vruntime;
-    if(curtask)
-        trace_sched_vcpu_runtime2(curtask, delta, ideal_runtime);
 	if (delta < 0)
 	{
 		return;
@@ -4551,6 +4537,7 @@ byebye:
 
 	if (delta > ideal_runtime)
 	{
+        /*
 		if(current->fake_yield)
         {
             trace_sched_do_wake(ktime_get(),current->yield_by,current->yield_to->pid,current->fake_yield);
@@ -4559,15 +4546,24 @@ byebye:
                 ,current->pid,current->yield_to->pid,current->fake_yield,current->yield_by,ktime_get()-current->yield_time_record);
             current->fake_yield=0;
         }
-
+        */
+        // If Im still lucky guy, I will keep use the cpu.
+        // Here is the lucky part, lucky guy shound't be preemptive
         if(current->lucky_guy)
         {
-        //I'm not lucky guy anymore and I will yield then
             current->lucky_guy -= 1;
-            //printk("[vcfs-debug] %d finish lucky in %llu ns but I will let it run more\n"
-              //  ,current->pid,ktime_get()-current->lucky_time);
+            //because we are here, we assumn our vruntime already larger
+            //just to prevent our vruntime be too large, we keep it as the old one. 
+            //so lucky guy can only be preemptive by the endof idealtime
+            //and we will not be fucked by the vruntime, also we keep our vruntime
+            //in a proper number even after the boost stage
+            curr->vruntime = se->vruntime; 
+            if(curtask)
+                trace_sched_vcpu_runtime2(curtask, curr->vruntime, se->vruntime);
             return; 
         }
+        //I'm not lucky guy anymore and I will yield then
+
         if(curtask)
             trace_sched_vcpu_runtime3(curtask, delta, ideal_runtime);
 		resched_curr(rq_of(cfs_rq));
@@ -11706,10 +11702,10 @@ void sched_force_schedule(struct task_struct *tsk, int clear_flag)
 		if(A->must_yield==0)
 		{
 			trace_sched_try_wake(ktime_get(),current->pid,B->pid);
-			A->yield_by = current->pid;
-			A->yield_to = tsk;
             A->yield_time_record=ktime_get();
 		}
+        A->yield_by = current->pid;
+        A->yield_to = tsk;
 		A->must_yield+=1;
 	}
 	//	printk("poor_se must_yield %d\n",A->must_yield);

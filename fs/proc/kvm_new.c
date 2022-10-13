@@ -149,6 +149,7 @@ int kvm_vcpu_young(struct kvm *kvm, int dest_id)
 			}
 		}
 	}
+    /*
 	list_for_each(pos,&irq_list->lnode)
         {
                 irq=list_entry(pos,struct kvm_irq_vcpu, lnode);
@@ -167,7 +168,7 @@ int kvm_vcpu_young(struct kvm *kvm, int dest_id)
 			}
                 }
         }
-
+*/
 	return ret;
 	
 }
@@ -227,6 +228,8 @@ void boost_IO_vcpu(int vcpu_pid, int dest_id)
 */
 	if(!sched_check_task_is_running(IO_vcpu))
 		sched_force_schedule(IO_vcpu,1);
+    else
+        IO_vcpu->lucky_guy+=1; //if I have a IPI, I will get more time
 
 }
 EXPORT_SYMBOL(boost_IO_vcpu);
@@ -262,16 +265,10 @@ void boost_IRQ_vcpu(int vcpu_pid)
 	if(!IRQ_vcpu)
 		return;
 		
-	if(unlikely(sched_check_task_is_running(IRQ_vcpu))) //if current running is IRQ_vcpu
-        {
-              //  sched_extend_life(IRQ_vcpu);
-	      return;
-        }
-        else
-	{
-	//	printk("running others\n");
-		sched_force_schedule(IRQ_vcpu,0);
-	}
+	if(!sched_check_task_is_running(IRQ_vcpu)) //if current running is not IRQ_vcpu
+        sched_force_schedule(IRQ_vcpu,0);
+    else
+        IRQ_vcpu->lucky_guy+=1;
 	//if vcpu_io is running. curr->sum_exec_runtime = curr->prev_sum_exec_runtime;
 	//else
 	//vcpu_io -> others vcpu in this pcpu, set_tsk_thread_flag(tsk,TIF_NEED_RESCHED);
