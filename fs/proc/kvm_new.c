@@ -267,8 +267,8 @@ void boost_IRQ_vcpu(int vcpu_pid)
 		
 	if(!sched_check_task_is_running(IRQ_vcpu)) //if current running is not IRQ_vcpu
         sched_force_schedule(IRQ_vcpu,0);
-    else
-        IRQ_vcpu->lucky_guy+=1;
+    //else
+    //    IRQ_vcpu->lucky_guy+=1;
 	//if vcpu_io is running. curr->sum_exec_runtime = curr->prev_sum_exec_runtime;
 	//else
 	//vcpu_io -> others vcpu in this pcpu, set_tsk_thread_flag(tsk,TIF_NEED_RESCHED);

@@ -723,15 +723,6 @@ static u64 sched_slice(struct cfs_rq *cfs_rq, struct sched_entity *se)
 			load = &lw;
 		}
         slice = __calc_delta(slice, se->load.weight, load);    
-        if(vcfs_timer3)
-        {
-            struct task_struct *curtask = task_of(se);
-            if(curtask)
-                if(curtask->lucky_guy > 0) //if I'm lucky guy 
-                {
-                    return 18000000UL;
-                }
-        }
 	}   
 
 	if (sched_feat(BASE_SLICE))
@@ -4436,22 +4427,35 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
     curtask = task_of(curr);
 
+   
+    if(current->lucky_guy > 10)
+        current->lucky_guy = 10;
+    if(current->must_yield > 10)
+        current->must_yield = 10; 
     if(vcfs_timer2)
     {
         // We put a nice ideal time for the case it needs run
         if(current->lucky_guy)
         {
-            ideal_runtime = 18000000UL + current->lucky_guy * 1000000UL;
+            ideal_runtime = 18000000UL; 
         }
 
     }
     // if the one needs to yield, it yield. 
 	if(current->must_yield > yield_level)
 	{
+        //TODO OCT13 Night before Gym
+        // SO, this works fine for most of case to preserve fairness or at least let 
+        // yield-vCPU to run, however, if the boost vCPU is like Nginx case, it will 
+        // run less than 2ms and stop using the resource, lucky guy is too gentle!!! 
+        // So we let it pass the force yield seesion, we believe the later process will 
+        // let it yield natually 
         //however, we gurantee it run at least in min granularity time, 2ms
+         
         if (delta_exec < sysctl_sched_min_granularity)
         {
-            return;
+            if(!vcfs_timer3)
+                return;
         }
         /*
 		trace_sched_do_wake(ktime_get(),current->yield_by,current->yield_to->pid,current->must_yield);
@@ -4488,6 +4492,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 
     //This is a tricky one, we should just let boost vcpu deschedule after it enjoy it time
     //We shouldn't re-boost it again in this check. Otherwise it creates stravation
+
 	if (delta_exec > ideal_runtime) {
         /*
 		if(current->fake_yield)
@@ -4534,7 +4539,6 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	{
 		return;
 	}
-
 	if (delta > ideal_runtime)
 	{
         /*

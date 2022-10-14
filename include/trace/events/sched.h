@@ -30,7 +30,7 @@ TRACE_EVENT(sched_kthread_stop,
 
 	TP_printk("comm=%s pid=%d", __entry->comm, __entry->pid)
 );
-
+//EXAMPLE 
 TRACE_EVENT(sched_force_sched,
 
         TP_PROTO(int cpu, int ret),
@@ -38,7 +38,7 @@ TRACE_EVENT(sched_force_sched,
         TP_ARGS(cpu, ret),
 
         TP_STRUCT__entry(
-		__field(	int,	cpu	)
+		        __field(	int,	cpu	)
                 __field(        int,    ret     )
         ),
 
