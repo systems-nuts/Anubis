@@ -4416,6 +4416,23 @@ extern unsigned long long yield_time;
 // 2. after the one should yield, the lucky guy should be fine to ignore all the vruntime
 // but only can be deschedule because of the idealtime, so we make sure it run enough
 // 3. For the boost, we put a nice idealtime for it. 
+
+// OCT 25 Tong
+// @UoE
+// Lucky guy will yield if IO is not running, it will count the time it yield
+// The volunteerly yield time will be debts for force the poor guy yield
+// When every poor guy yield, we also count the time it yield to Lucky guy
+// However, we let Lukcy guy to pay its debts by using the time it doesn't run IO
+// Patched protocol: A Lannister Always Pays His Debts
+
+// OCT 26 Tong
+// @UoE
+// The debts idea can be optimized, we should create a debts pool for the VM
+// Because we can eaily identify the IO vCPU and IRQ vCPU, by lucky point. 
+// We can let each non-lucky vCPU check if there is debts in pool, if there is,
+// It would pay for his sibings. The overall fairness can be guranteed 
+// However it might not work on 1vCPU case, but we can boost anyway.
+// This idea will be implemented in OCT 27. 
 static void
 check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 {
@@ -4426,65 +4443,81 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	ideal_runtime = sched_slice(cfs_rq, curr);
 	delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
     curtask = task_of(curr);
-
+    trace_sched_vcpu_runtime(curtask, delta_exec, current->lannisters_debts);
    
-    if(current->lucky_guy > 10)
-        current->lucky_guy = 10;
-    if(current->must_yield > 10)
-        current->must_yield = 10; 
-    if(vcfs_timer2)
-    {
-        // We put a nice ideal time for the case it needs run
-        if(current->lucky_guy)
-        {
-            ideal_runtime = 18000000UL; 
-        }
-
-    }
+    if(current->lucky_guy > 5)
+        current->lucky_guy = 5;
+    if(current->lannisters_debts>40000000)
+        current->lannisters_debts=40000000;
     // if the one needs to yield, it yield. 
-	if(current->must_yield > yield_level)
-	{
-        //TODO OCT13 Night before Gym
-        // SO, this works fine for most of case to preserve fairness or at least let 
-        // yield-vCPU to run, however, if the boost vCPU is like Nginx case, it will 
-        // run less than 2ms and stop using the resource, lucky guy is too gentle!!! 
-        // So we let it pass the force yield seesion, we believe the later process will 
-        // let it yield natually 
-        //however, we gurantee it run at least in min granularity time, 2ms
-         
-        if (delta_exec < sysctl_sched_min_granularity)
+
+    if(vcfs_timer3) //protocol: A Lannister Always Pays His Debts
+    {
+        if(current->lucky_guy || vcfs_timer)// if I'm a Lannister 
         {
-            if(!vcfs_timer3)
-                return;
-        }
-        /*
-		trace_sched_do_wake(ktime_get(),current->yield_by,current->yield_to->pid,current->must_yield);
-        if(vcfs_timer)
-            printk("[vcfs-debug] %d yield to %d %d time(s) by %d cost %llu ns\n"
-            ,current->pid,current->yield_to->pid,current->must_yield,current->yield_by,ktime_get()-current->yield_time_record);
-        
-        if(current->must_yield>2 || ktime_get() - current->yield_time_record > 3900000)
-        {
-            se = __pick_first_entity(cfs_rq); 
-            if(!se) return;
-            if (se != &current->yield_to->se)
+            if (delta_exec < sysctl_sched_min_granularity)
             {
-                set_skip_buddy(se);
-                current->yield_to->se.sum_exec_runtime = se->sum_exec_runtime;
-                current->yield_to->se.vruntime = se->vruntime;
-                update_curr(cfs_rq);
+                current->lucky_guy-=1;
+                return;
+            }
+
+            if(current->running_io >1 && current->lannisters_debts>0) // if not running IO, I pay debts
+            {   
+                current->lucky_guy-=1;
+                trace_sched_vcpu_runtime2(curtask, delta_exec, current->lannisters_debts);
+                //pay debts here
+                if(likely(ideal_runtime>delta_exec))
+                {
+                    if ((ideal_runtime - delta_exec) > current->lannisters_debts)
+                    {
+                        curr->sum_exec_runtime+=current->lannisters_debts;
+                        curr->vruntime += current->lannisters_debts;
+                        current->lannisters_debts = 0;
+                    }
+                    else
+                    {
+                        current->lannisters_debts -= (ideal_runtime - delta_exec);
+                        curr->sum_exec_runtime = curr->prev_sum_exec_runtime + ideal_runtime;
+                        curr->vruntime+= (ideal_runtime - delta_exec);
+                        resched_curr(rq_of(cfs_rq));
+                        clear_buddies(cfs_rq, curr);
+                        return;
+                    }
+                }
             }
         }
-        */
-        
+    }
+
+	if(current->must_yield > yield_level)
+	{
+        if (vcfs_timer2)
+        {
+            if (delta_exec < sysctl_sched_min_granularity)
+                return;
+        }
+
+        if(vcfs_timer3)
+        {
+            if(likely(ideal_runtime>delta_exec)) // the debts I borrow to a Lannister
+                current->yield_to->lannisters_debts+= (ideal_runtime - delta_exec);
+        }
+
         //For yield, we fake it, to let the CFS think it already run enough time
-		curr->sum_exec_runtime = curr->prev_sum_exec_runtime + ideal_runtime + 1000000;
-        current->must_yield-=1;
-		curr->vruntime+= ideal_runtime + 1000000;
+		curr->sum_exec_runtime = curr->prev_sum_exec_runtime + ideal_runtime;
+        current->must_yield=0;
+		curr->vruntime+= ideal_runtime;
         //We set the one to yield as lucky guy, and lucky guy will enjoy higher time slice
-        current->yield_to->lucky_guy += 1;
-        if(curtask)
-            trace_sched_vcpu_runtime(curtask, delta_exec, ideal_runtime); 
+        if(!current->lucky_guy)
+        {
+            current->yield_to->lucky_guy += 1;
+            current->yield_to->yield_time_record=ktime_get();
+        }
+        else
+        {
+            current->lucky_guy=0;
+            current->yield_time_record=ktime_get();
+
+        }
 		resched_curr(rq_of(cfs_rq));
         clear_buddies(cfs_rq, curr);
         return;
@@ -4511,8 +4544,16 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
         //If passed to here, which means I used all of my lucky already
         if(current->lucky_guy)
         {
-            current->lucky_guy -=1 ;
+            if(!current->running_io) //if current running IO it keep running
+            {
+                if(delta_exec- ideal_runtime < 8000000)
+                {
+                    current->lannisters_debts+=1000000;
+                    return;
+                }
+            }
         }
+        current->yield_time_record=ktime_get();
 		resched_curr(rq_of(cfs_rq));
 		/*
 		 * The current task ran long enough, ensure it doesn't get
@@ -4539,6 +4580,22 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	{
 		return;
 	}
+    /*
+    if (vcfs_timer2)
+    {
+        if(current->lucky_guy)
+        {
+            if (delta > current->lucky_guy*2000000)
+            {
+                current->lucky_guy = 0;
+                
+                resched_curr(rq_of(cfs_rq));
+            }
+            else
+                return;
+        }
+    }
+    */
 	if (delta > ideal_runtime)
 	{
         /*
@@ -4561,13 +4618,15 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
             //so lucky guy can only be preemptive by the endof idealtime
             //and we will not be fucked by the vruntime, also we keep our vruntime
             //in a proper number even after the boost stage
-            curr->vruntime = se->vruntime; 
-            if(curtask)
-                trace_sched_vcpu_runtime2(curtask, curr->vruntime, se->vruntime);
+            curr->vruntime -=1000000; 
+            current->lannisters_debts+=1000000;
+            //if(curtask)
+            //    trace_sched_vcpu_runtime2(curtask, curr->vruntime, se->vruntime);
             return; 
         }
-        //I'm not lucky guy anymore and I will yield then
+        current->yield_time_record=ktime_get();
 
+        //I'm not lucky guy anymore and I will yield then
         if(curtask)
             trace_sched_vcpu_runtime3(curtask, delta, ideal_runtime);
 		resched_curr(rq_of(cfs_rq));

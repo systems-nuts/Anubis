@@ -6797,7 +6797,6 @@ reenter_guest:
 		kvm_machine_check();
 
 	trace_kvm_exit(vmx->exit_reason.full, vcpu, KVM_ISA_VMX);
-
 	if (unlikely(vmx->exit_reason.failed_vmentry))
 		return EXIT_FASTPATH_NONE;
 

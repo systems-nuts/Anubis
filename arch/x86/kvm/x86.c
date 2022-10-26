@@ -58,6 +58,9 @@
 #include <linux/mem_encrypt.h>
 #include <linux/entry-kvm.h>
 
+//for boost vcfs
+#include <linux/sched.h>
+
 #include <trace/events/kvm.h>
 
 #include <asm/debugreg.h>
@@ -8846,11 +8849,44 @@ void __kvm_request_immediate_exit(struct kvm_vcpu *vcpu)
 }
 EXPORT_SYMBOL_GPL(__kvm_request_immediate_exit);
 
+#include "vmx/vmx.h"
+static void vcfs_process(struct kvm_vcpu *vcpu)
+{
+    unsigned long cr3;
+    struct task_struct *vcpu_task;
+    struct vcpu_vmx *vmx = to_vmx(vcpu);
+    vcpu_task = find_get_task_by_vpid(vcpu->pid->numbers[0].nr);
+   
+    cr3 = kvm_read_cr3(vcpu);
+
+    trace_kvm_get_vcpu_CR3(cr3);
+
+    //This kvm_exit is mark as MMIO, we update the cr3 indicator
+    if(vmx->exit_reason.basic == EXIT_REASON_EPT_MISCONFIG)
+    {
+        if(cr3 != vcpu_task->previous_cr3)
+        {
+            vcpu_task->latest_io_cr3 = cr3;
+            trace_kvm_get_vcpu_CR3_old(vcpu_task->latest_io_cr3);
+        }
+    }
+    //This kvm_exit is for other reason, we check current running process
+    //If the cr3 is not matched, current running is not IO task
+    if(cr3 == vcpu_task->latest_io_cr3)
+        vcpu_task->running_io = 0;
+    else
+        vcpu_task->running_io+=1;
+    
+    vcpu_task->previous_cr3 = cr3;
+}
+
+
 /*
  * Returns 1 to let vcpu_run() continue the guest execution loop without
  * exiting to the userspace.  Otherwise, the value will be returned to the
  * userspace.
  */
+
 static int vcpu_enter_guest(struct kvm_vcpu *vcpu)
 {
 	int r;
@@ -8991,7 +9027,6 @@ static int vcpu_enter_guest(struct kvm_vcpu *vcpu)
 			kvm_lapic_sync_to_vapic(vcpu);
 		}
 	}
-
 	r = kvm_mmu_reload(vcpu);
 	if (unlikely(r)) {
 		goto cancel_injection;
@@ -9149,6 +9184,8 @@ static int vcpu_enter_guest(struct kvm_vcpu *vcpu)
 		kvm_lapic_sync_from_vapic(vcpu);
 
 	r = kvm_x86_ops.handle_exit(vcpu, exit_fastpath);
+    vcfs_process(vcpu);
+
 	return r;
 
 cancel_injection:

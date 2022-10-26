@@ -747,6 +747,11 @@ ioeventfd_write(struct kvm_vcpu *vcpu, struct kvm_io_device *this, gpa_t addr,
 		return -EOPNOTSUPP;
 	trace_kvm_ioevent_irq(vcpu->pid->numbers[0].nr);
 
+    if(current->lucky_guy)
+    {
+        current->event_fd_time= ktime_get();
+    }
+
 	eventfd_signal(p->eventfd, 1);
 	return 0;
 }

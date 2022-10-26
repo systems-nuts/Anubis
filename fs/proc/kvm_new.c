@@ -25,7 +25,7 @@ static struct kvm_irq_vcpu *irq_list;
 static int booster_pid;
 static int control;
 unsigned long long yield_level=0;
-unsigned long long yield_time=10000000;
+unsigned long long yield_time=4000000;
 EXPORT_SYMBOL(yield_time);
 EXPORT_SYMBOL(yield_level);
 int list_table_vcpu_add(int pid1, int pid2, int id, int cpu)

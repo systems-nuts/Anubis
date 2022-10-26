@@ -196,8 +196,7 @@ int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
 			}
 			else
 			{
-				if(irq.dest_id > 8)
-	                                irq.dest_id = 8;
+				if(irq.dest_id > 8)   irq.dest_id = 8;
 				trace_kvm_irq_time_get(ktime_get(),
                                 kvm->vcpus[order_base_2(irq.dest_id)]->pid->numbers[0].nr,
                                                 (int)kvm->userspace_pid);

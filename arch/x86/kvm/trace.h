@@ -1621,7 +1621,7 @@ TRACE_EVENT(kvm_ipi_time_get,
 );
 
 
-
+#define TRACE_EVENT_KVM_GET_VCPU_CR3(name)
 TRACE_EVENT(kvm_get_vcpu_CR3,
             TP_PROTO(__u64 cr3),
             TP_ARGS(cr3),
@@ -1635,6 +1635,22 @@ TRACE_EVENT(kvm_get_vcpu_CR3,
         ),
 
         TP_printk("cr3: %llx", __entry->cr3)
+);
+TRACE_EVENT_KVM_GET_VCPU_CR3(kvm_get_vcpu_CR3);
+
+TRACE_EVENT(kvm_get_vcpu_CR3_old,
+            TP_PROTO(__u64 cr3),
+            TP_ARGS(cr3),
+
+        TP_STRUCT__entry(
+                __field(        __u64,  cr3     )
+        ),
+
+        TP_fast_assign(
+                __entry->cr3    =       cr3
+        ),
+
+        TP_printk("cr3_record: %llx", __entry->cr3)
 );
 
 TRACE_EVENT(kvm_get_vcpu_CR0_ts,
