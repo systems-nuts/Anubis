@@ -8848,7 +8848,7 @@ void __kvm_request_immediate_exit(struct kvm_vcpu *vcpu)
 	smp_send_reschedule(vcpu->cpu);
 }
 EXPORT_SYMBOL_GPL(__kvm_request_immediate_exit);
-
+/*
 #include "vmx/vmx.h"
 static void vcfs_process(struct kvm_vcpu *vcpu)
 {
@@ -8859,11 +8859,11 @@ static void vcfs_process(struct kvm_vcpu *vcpu)
    
     cr3 = kvm_read_cr3(vcpu);
 
-    trace_kvm_get_vcpu_CR3(cr3);
-
+    //trace_kvm_get_vcpu_CR3(cr3);
     //This kvm_exit is mark as MMIO, we update the cr3 indicator
     if(vmx->exit_reason.basic == EXIT_REASON_EPT_MISCONFIG)
     {
+//        trace_kvm_get_vcpu_CR3_old(vmcs_readl(GUEST_GS_BASE));
         if(cr3 != vcpu_task->previous_cr3)
         {
             vcpu_task->latest_io_cr3 = cr3;
@@ -8879,6 +8879,8 @@ static void vcfs_process(struct kvm_vcpu *vcpu)
     
     vcpu_task->previous_cr3 = cr3;
 }
+
+*/
 
 
 /*
@@ -9184,7 +9186,7 @@ static int vcpu_enter_guest(struct kvm_vcpu *vcpu)
 		kvm_lapic_sync_from_vapic(vcpu);
 
 	r = kvm_x86_ops.handle_exit(vcpu, exit_fastpath);
-    vcfs_process(vcpu);
+    //vcfs_process(vcpu);
 
 	return r;
 
@@ -11430,6 +11432,11 @@ int kvm_handle_invpcid(struct kvm_vcpu *vcpu, unsigned long type, gva_t gva)
 EXPORT_SYMBOL_GPL(kvm_handle_invpcid);
 
 EXPORT_TRACEPOINT_SYMBOL_GPL(kvm_exit);
+
+EXPORT_TRACEPOINT_SYMBOL_GPL(kvm_get_vcpu_GS);
+EXPORT_TRACEPOINT_SYMBOL_GPL(kvm_get_vcpu_GS_MMIO);
+EXPORT_TRACEPOINT_SYMBOL_GPL(kvm_get_vcpu_CR3);
+
 EXPORT_TRACEPOINT_SYMBOL_GPL(kvm_fast_mmio);
 EXPORT_TRACEPOINT_SYMBOL_GPL(kvm_inj_virq);
 EXPORT_TRACEPOINT_SYMBOL_GPL(kvm_page_fault);

@@ -610,18 +610,19 @@ void resched_curr(struct rq *rq)
 	int cpu;
 
 	lockdep_assert_held(&rq->lock);
-
+    trace_sched_resched1(curr->pid);
 	if (test_tsk_need_resched(curr))
 		return;
 
 	cpu = cpu_of(rq);
 
 	if (cpu == smp_processor_id()) {
+        trace_sched_resched2(curr->pid,cpu);
 		set_tsk_need_resched(curr);
 		set_preempt_need_resched();
 		return;
 	}
-
+    
 	if (set_nr_and_not_polling(curr))
 		smp_send_reschedule(cpu);
 	else
@@ -7046,6 +7047,9 @@ static struct kmem_cache *task_group_cache __read_mostly;
 
 DECLARE_PER_CPU(cpumask_var_t, load_balance_mask);
 DECLARE_PER_CPU(cpumask_var_t, select_idle_mask);
+//PATCH TONG
+void (*burrito_caller)(void) = NULL;
+EXPORT_SYMBOL(burrito_caller);
 
 void __init sched_init(void)
 {

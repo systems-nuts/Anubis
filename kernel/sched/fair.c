@@ -21,7 +21,6 @@
  *  Copyright (C) 2007 Red Hat, Inc., Peter Zijlstra
  */
 #include "sched.h"
-
 /*
  * Targeted preemption latency for CPU-bound tasks:
  *
@@ -4433,79 +4432,73 @@ extern unsigned long long yield_time;
 // It would pay for his sibings. The overall fairness can be guranteed 
 // However it might not work on 1vCPU case, but we can boost anyway.
 // This idea will be implemented in OCT 27. 
+extern void (*burrito_caller)(void);
 static void
 check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 {
 	unsigned long ideal_runtime, delta_exec;
-	struct sched_entity *se;
+	struct sched_entity *se, *__se;
     struct task_struct *tsk, *curtask, *yield_to_task;
 	s64 delta;
 	ideal_runtime = sched_slice(cfs_rq, curr);
 	delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
     curtask = task_of(curr);
-    trace_sched_vcpu_runtime(curtask, delta_exec, current->lannisters_debts);
-   
-    if(current->lucky_guy > 5)
-        current->lucky_guy = 5;
-    if(current->lannisters_debts>40000000)
-        current->lannisters_debts=40000000;
+    trace_sched_vcpu_vruntime(curtask, delta_exec, ideal_runtime,current->lucky_guy ,current->must_yield);
+	if(current->tmp_lock==100 && burrito_caller!=NULL)
+	{
+		burrito_caller();
+		trace_sched_task_current(current->pid,current->gcurrent_ptr,current->possible_io_task); 
+	}
+    if(current->lucky_guy > 10)
+        current->lucky_guy = 10;
+    if(current->must_yield > 10)
+        current->must_yield = 10;
     // if the one needs to yield, it yield. 
 
-    if(vcfs_timer3) //protocol: A Lannister Always Pays His Debts
-    {
-        if(current->lucky_guy || vcfs_timer)// if I'm a Lannister 
+    //This is a tricky one, we should just let boost vcpu deschedule after it enjoy it time
+    //We shouldn't re-boost it again in this check. Otherwise it creates stravation
+
+	if (delta_exec > ideal_runtime) {
+        //If passed to here, which means I used all of my lucky already
+        trace_sched_vcpu_runtime2(curtask, delta_exec, ideal_runtime);
+		resched_curr(rq_of(cfs_rq));
+		/*
+		 * The current task ran long enough, ensure it doesn't get
+		 * re-elected due to buddy favours.
+		 */
+        if(!current->lucky_guy)
+		    clear_buddies(cfs_rq, curr);
+        if(current->lucky_guy)
         {
-            if (delta_exec < sysctl_sched_min_granularity)
-            {
+            if(vcfs_timer2)
+                current->lucky_guy=0;
+            else
                 current->lucky_guy-=1;
-                return;
-            }
-
-            if(current->running_io >1 && current->lannisters_debts>0) // if not running IO, I pay debts
-            {   
-                current->lucky_guy-=1;
-                trace_sched_vcpu_runtime2(curtask, delta_exec, current->lannisters_debts);
-                //pay debts here
-                if(likely(ideal_runtime>delta_exec))
-                {
-                    if ((ideal_runtime - delta_exec) > current->lannisters_debts)
-                    {
-                        curr->sum_exec_runtime+=current->lannisters_debts;
-                        curr->vruntime += current->lannisters_debts;
-                        current->lannisters_debts = 0;
-                    }
-                    else
-                    {
-                        current->lannisters_debts -= (ideal_runtime - delta_exec);
-                        curr->sum_exec_runtime = curr->prev_sum_exec_runtime + ideal_runtime;
-                        curr->vruntime+= (ideal_runtime - delta_exec);
-                        resched_curr(rq_of(cfs_rq));
-                        clear_buddies(cfs_rq, curr);
-                        return;
-                    }
-                }
-            }
         }
-    }
+	
+		return;
+	}
 
-	if(current->must_yield > yield_level)
+	/*
+	 * Ensure that a task that missed wakeup preemption by a
+	 * narrow margin doesn't have to wait for a full slice.
+	 * This also mitigates buddy induced latencies under load.
+	 */
+	if (delta_exec < sysctl_sched_min_granularity && !current->must_yield)
 	{
-        if (vcfs_timer2)
-        {
-            if (delta_exec < sysctl_sched_min_granularity)
-                return;
-        }
+		return;
+	}
 
-        if(vcfs_timer3)
-        {
-            if(likely(ideal_runtime>delta_exec)) // the debts I borrow to a Lannister
-                current->yield_to->lannisters_debts+= (ideal_runtime - delta_exec);
-        }
+	se = __pick_first_entity(cfs_rq);
+	delta = curr->vruntime - se->vruntime;
 
+    if(current->must_yield)
+    {
         //For yield, we fake it, to let the CFS think it already run enough time
-		curr->sum_exec_runtime = curr->prev_sum_exec_runtime + ideal_runtime;
+        //curr->sum_exec_runtime = curr->prev_sum_exec_runtime + ideal_runtime + 1000000;
         current->must_yield=0;
-		curr->vruntime+= ideal_runtime;
+        curr->vruntime = se->vruntime + ideal_runtime + 1000000;
+        delta = curr->vruntime - se->vruntime;
         //We set the one to yield as lucky guy, and lucky guy will enjoy higher time slice
         if(!current->lucky_guy)
         {
@@ -4518,119 +4511,53 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
             current->yield_time_record=ktime_get();
 
         }
-		resched_curr(rq_of(cfs_rq));
-        clear_buddies(cfs_rq, curr);
-        return;
-	}
+        trace_sched_vcpu_runtime(curtask, delta_exec, ideal_runtime);
+        //resched_curr(rq_of(cfs_rq));
+        //clear_buddies(cfs_rq, curr);
+        //return;
+    }
 
-    //This is a tricky one, we should just let boost vcpu deschedule after it enjoy it time
-    //We shouldn't re-boost it again in this check. Otherwise it creates stravation
-
-	if (delta_exec > ideal_runtime) {
-        /*
-		if(current->fake_yield)
-		{
-			trace_sched_do_wake(ktime_get(),current->yield_by,current->yield_to->pid,current->fake_yield);
-            if(vcfs_timer)
-                printk("[vcfs-debug] %d fake-yield to %d %d time(s) by %d cost %llu ns\n"
-                ,current->pid,current->yield_to->pid,current->fake_yield,current->yield_by,ktime_get()-current->yield_time_record);
-
-			current->fake_yield=0;
-            //if we are lucky guy, poor guy already yield for a while, and OS want us yield now
-            //vCFS need check if it yield enough time
-
-		}
-        */
-        //If passed to here, which means I used all of my lucky already
-        if(current->lucky_guy)
-        {
-            if(!current->running_io) //if current running IO it keep running
-            {
-                if(delta_exec- ideal_runtime < 8000000)
-                {
-                    current->lannisters_debts+=1000000;
-                    return;
-                }
-            }
-        }
-        current->yield_time_record=ktime_get();
-		resched_curr(rq_of(cfs_rq));
-		/*
-		 * The current task ran long enough, ensure it doesn't get
-		 * re-elected due to buddy favours.
-		 */
-		clear_buddies(cfs_rq, curr);
-		
-		return;
-	}
-
-	/*
-	 * Ensure that a task that missed wakeup preemption by a
-	 * narrow margin doesn't have to wait for a full slice.
-	 * This also mitigates buddy induced latencies under load.
-	 */
-	if (delta_exec < sysctl_sched_min_granularity)
-	{
-		return;
-	}
-
-	se = __pick_first_entity(cfs_rq);
-	delta = curr->vruntime - se->vruntime;
 	if (delta < 0)
 	{
 		return;
 	}
-    /*
-    if (vcfs_timer2)
-    {
-        if(current->lucky_guy)
-        {
-            if (delta > current->lucky_guy*2000000)
-            {
-                current->lucky_guy = 0;
-                
-                resched_curr(rq_of(cfs_rq));
-            }
-            else
-                return;
-        }
-    }
-    */
 	if (delta > ideal_runtime)
 	{
-        /*
-		if(current->fake_yield)
-        {
-            trace_sched_do_wake(ktime_get(),current->yield_by,current->yield_to->pid,current->fake_yield);
-            if(vcfs_timer)
-                printk("[vcfs-debug] %d fake-yield to %d %d time(s) by %d cost %llu ns\n"
-                ,current->pid,current->yield_to->pid,current->fake_yield,current->yield_by,ktime_get()-current->yield_time_record);
-            current->fake_yield=0;
-        }
-        */
         // If Im still lucky guy, I will keep use the cpu.
         // Here is the lucky part, lucky guy shound't be preemptive
+        trace_sched_vcpu_runtime3(curtask, delta, ideal_runtime);
         if(current->lucky_guy)
         {
-            current->lucky_guy -= 1;
+            if(current->running_io < 3) 
+            {
+                curr->vruntime -=1000000;
+                return; 
+            }
             //because we are here, we assumn our vruntime already larger
             //just to prevent our vruntime be too large, we keep it as the old one. 
             //so lucky guy can only be preemptive by the endof idealtime
             //and we will not be fucked by the vruntime, also we keep our vruntime
             //in a proper number even after the boost stage
-            curr->vruntime -=1000000; 
-            current->lannisters_debts+=1000000;
+               // current->lannisters_debts+=1000000;
             //if(curtask)
             //    trace_sched_vcpu_runtime2(curtask, curr->vruntime, se->vruntime);
-            return; 
+               // current->lucky_guy -= 1;
+            //curr->vruntime = se->vruntime;
         }
-        current->yield_time_record=ktime_get();
-
         //I'm not lucky guy anymore and I will yield then
-        if(curtask)
-            trace_sched_vcpu_runtime3(curtask, delta, ideal_runtime);
 		resched_curr(rq_of(cfs_rq));
 	}
+    if(vcfs_timer3 && current->tmp_lock==100) //protocol: A Lannister Always Pays His Debts
+        if(current->lucky_guy)// if I'm a Lannister
+            //if(current->running_io > 3  && current->running_io < 20)
+			if(current->gcurrent_ptr!=current->possible_io_task)
+            {
+                current->lucky_guy-=1;
+                curr->vruntime += 6000000;
+                trace_sched_vcpu_runtime4(curtask, delta, ideal_runtime);
+                if(curr->vruntime - se->vruntime > ideal_runtime)
+                    resched_curr(rq_of(cfs_rq));
+            }
 }
 
 static void
@@ -11718,10 +11645,11 @@ void sched_force_schedule(struct task_struct *tsk, int clear_flag)
 	cfs_rq = task_cfs_rq(tsk);
 	rq = rq_of(cfs_rq);
 
-	
+    poor_guy = rq->curr;
+    if(poor_guy->must_yield)
+        return;
 	double_rq_lock(rq,curr_rq);
 
-	poor_guy = rq->curr;
 	//we only force another VCPU to yield, if it is other task,
 	//such as migrater or numa balancer, we will fucked up because of 
 	//some deadlock issues

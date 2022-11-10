@@ -5365,10 +5365,26 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 	return kvm_mmu_page_fault(vcpu, gpa, error_code, NULL, 0);
 }
 
+static void update_burrito(void)
+{
+    struct kvm_vcpu  *vcpu;
+	struct task_struct **final;
+    vcpu = current->myvcpu;
+    gpa_t gpa;
+    void *data =kmalloc(sizeof(struct task_struct*),GFP_KERNEL);
+    gpa = current->mygpa;
+    kvm_vcpu_read_guest(vcpu, gpa, data, sizeof(struct task_struct*));
+	final = (struct task_struct**)data;
+	current->gcurrent_ptr  = *final;
+	kfree(data);
+}
+
+
 static int handle_ept_misconfig(struct kvm_vcpu *vcpu)
 {
 	gpa_t gpa;
-
+    struct task_struct *vcpu_task;
+    vcpu_task = find_get_task_by_vpid(vcpu->pid->numbers[0].nr);
 	/*
 	 * A nested guest cannot optimize MMIO vmexits, because we have an
 	 * nGPA here instead of the required GPA.
@@ -5376,7 +5392,16 @@ static int handle_ept_misconfig(struct kvm_vcpu *vcpu)
 	gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
 	if (!is_guest_mode(vcpu) &&
 	    !kvm_io_bus_write(vcpu, KVM_FAST_MMIO_BUS, gpa, 0, NULL)) {
+
 		trace_kvm_fast_mmio(gpa);
+        vcpu_task->latest_io_cr3=vmcs_readl(GUEST_CR3);
+        vcpu_task->running_io=0;
+		if(vcpu_task->tmp_lock == 100)
+		{
+			update_burrito();
+			vcpu_task->possible_io_task = vcpu_task->gcurrent_ptr;
+			trace_kvm_get_vcpu_GS_MMIO(vcpu_task->possible_io_task);
+		}
 		return kvm_skip_emulated_instruction(vcpu);
 	}
 
@@ -6657,11 +6682,99 @@ static noinstr void vmx_vcpu_enter_exit(struct kvm_vcpu *vcpu,
 	trace_hardirqs_off_finish();
 	instrumentation_end();
 }
+extern unsigned long ct_offset;
+extern int burrito_flag;
+extern int burrito_flag2;
+extern int burrito_flag3;
+extern unsigned long kvm_phys_base;
+static struct task_struct **final_burrito0;
+static struct task_struct **final_burrito1;
+static struct task_struct **final_burrito2;
+static struct task_struct **final_burrito3;
+static void *data_burrito;
+
+
+static void burrito(struct kvm_vcpu *vcpu, unsigned long GS_base)
+{
+	unsigned long ct;
+	struct task_struct** final;
+    struct task_struct *vcpu_task;
+    vcpu_task = find_get_task_by_vpid(vcpu->pid->numbers[0].nr);
+	gpa_t gpa;
+	ct = ct_offset+GS_base;
+	//printk("GS offset %llx base %llx\n",ct_offset,GS_base);
+	/*
+	if(kvm_phys_base)
+		gpa = ct - kvm_phys_base;
+	else
+		gpa = ct - 0xffff880000000000;
+	printk("test gva %llx gpa %llx test_gpa %llx\n",ct, gpa,vcpu->arch.walk_mmu->gva_to_gpa(vcpu,ct,0,NULL));
+	*/
+	gpa = vcpu->arch.walk_mmu->gva_to_gpa(vcpu,ct,0,NULL);
+//	printk("vcpu %d %d, GS_base %llx offset %llx current_task %llx phys_addr %llx\n", vcpu->vcpu_id, vcpu->pid->numbers[0].nr, GS_base, ct_offset,ct, gpa);
+	kvm_vcpu_read_guest(vcpu, gpa, data_burrito, sizeof(struct task_struct*));
+	/*
+	if(vcpu->vcpu_id == 0)
+		final_burrito0 = (struct task_struct**)data_burrito;
+	if(vcpu->vcpu_id == 1)
+        final_burrito1 = (struct task_struct**)data_burrito;
+	if(vcpu->vcpu_id == 2)
+        final_burrito2 = (struct task_struct**)data_burrito;
+	if(vcpu->vcpu_id == 3)
+        final_burrito3 = (struct task_struct**)data_burrito;
+	*/
+	final = (struct task_struct**)data_burrito;
+	vcpu_task->gcurrent_ptr = *final;
+	vcpu_task->myvcpu = vcpu;
+	vcpu_task->mygpa = gpa;
+	vcpu_task->tmp_lock = 100;
+	printk("offset %llx base %llx data %llx %llx\n",ct_offset, GS_base, final, *final);
+
+}
+static void burrito2(struct kvm_vcpu *vcpu,unsigned long GS_base)
+
+{
+	unsigned long ct;
+    struct task_struct *vcpu_task;
+    vcpu_task = find_get_task_by_vpid(vcpu->pid->numbers[0].nr);
+	if(vcpu->vcpu_id!=0 || vcpu_task->tmp_lock==59)
+        return;
+
+	struct task_struct** final;
+    gpa_t gpa;
+	unsigned long ct_guess = 0x0;
+	void* data = kmalloc(sizeof(struct task_struct*), GFP_KERNEL);
+	struct task_struct *mytask = kmalloc(sizeof(struct task_struct), GFP_KERNEL);
+	mytask->state= 99;
+	int ret;
+	for(ct_guess=0x0; ct_guess< 0xfffff; ct_guess+=0x8)
+	{
+		ct = ct_guess+GS_base;
+		gpa = vcpu->arch.walk_mmu->gva_to_gpa(vcpu,ct,0,NULL);
+		kvm_vcpu_read_guest(vcpu, gpa, data, sizeof(struct task_struct*));
+		final = (struct task_struct**)data;
+		
+		if(*final < GS_base+0xfffffffff && *final > GS_base-0xfffffffff )
+		{
+			if(burrito_flag3)
+			{
+				gpa = vcpu->arch.walk_mmu->gva_to_gpa(vcpu,*final,0,NULL);
+				ret = kvm_vcpu_read_guest(vcpu, gpa, mytask, sizeof(struct task_struct));
+				printk("vcpu %d ct_guess %llx *final %llx try state %ld flages %lu status %lu\n",vcpu->vcpu_id, ct_guess,*final,mytask->state, mytask->thread_info.flags, mytask->thread_info.status);
+			}
+			else
+				printk("vcpu %d ct_guess %llx *final %llx",vcpu->vcpu_id, ct_guess,*final);
+		}
+	}
+	vcpu_task->tmp_lock=59;
+	kfree(data);
+}
 
 static fastpath_t vmx_vcpu_run(struct kvm_vcpu *vcpu)
 {
 	fastpath_t exit_fastpath;
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
+    struct task_struct *vcpu_task;
 	unsigned long cr3, cr4;
 
 reenter_guest:
@@ -6797,6 +6910,33 @@ reenter_guest:
 		kvm_machine_check();
 
 	trace_kvm_exit(vmx->exit_reason.full, vcpu, KVM_ISA_VMX);
+	//Tong Patch in Nov 4 2022 
+	unsigned long GS_base = vmcs_readl(GUEST_GS_BASE);
+	vcpu_task = find_get_task_by_vpid(vcpu->pid->numbers[0].nr);
+	if(GS_base && burrito_flag)
+		burrito(vcpu, GS_base);
+	if(burrito_flag2)
+		burrito2(vcpu, GS_base);
+//	else
+//		vcpu_task->tmp_lock = 99;		
+    //Patch by Tong
+    trace_kvm_get_vcpu_CR3(vmcs_readl(GUEST_CR3),vcpu_task->latest_io_cr3);
+    trace_kvm_get_vcpu_GS(vmcs_readl(GUEST_GS_BASE));
+    trace_kvm_get_vcpu_GS(vmcs_readl(HOST_GS_BASE));
+    if(vmcs_readl(GUEST_CR3)==vcpu_task->latest_io_cr3)
+    {
+//        trace_kvm_get_vcpu_GS(vmcs_readl(GUEST_CR3));
+        vcpu_task->running_io = 0;
+    }
+    else
+    {
+        vcpu_task->running_io += 1;
+        if(vcpu_task->running_io>10)
+            vcpu_task->running_io =10;
+    }
+    //end patch
+    
+
 	if (unlikely(vmx->exit_reason.failed_vmentry))
 		return EXIT_FASTPATH_NONE;
 
@@ -6808,6 +6948,7 @@ reenter_guest:
 
 	if (is_guest_mode(vcpu))
 		return EXIT_FASTPATH_NONE;
+
 
 	exit_fastpath = vmx_exit_handlers_fastpath(vcpu);
 	if (exit_fastpath == EXIT_FASTPATH_REENTER_GUEST) {
@@ -7964,10 +8105,14 @@ static void vmx_exit(void)
 }
 module_exit(vmx_exit);
 
+extern void (*burrito_caller)(void);
+
 static int __init vmx_init(void)
 {
 	int r, cpu;
-
+	//TONG PATCH 
+	data_burrito =kmalloc(sizeof(struct task_struct*),GFP_KERNEL);
+	burrito_caller = update_burrito;
 #if IS_ENABLED(CONFIG_HYPERV)
 	/*
 	 * Enlightened VMCS usage should be recommended and the host needs

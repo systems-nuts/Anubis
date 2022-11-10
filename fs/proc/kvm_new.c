@@ -416,10 +416,13 @@ static int vcpu_list_show(struct seq_file *m, void *v)
 {
 	struct list_head *pos;
 	struct vcpu_io *entry;
+	struct task_struct *tmp;
 	list_for_each(pos,&vcpu_list->lnode)
         {
                 entry=list_entry(pos,struct vcpu_io, lnode);
-		seq_printf(m,"kvm %d vcpu %d vcpu_pid %d pcpu %d io %lu \n",entry->kvm_pid,entry->vcpu_id,entry->vcpu_pid,entry->vcpu_running_at,entry->eventfd_time);
+		//seq_printf(m,"kvm %d vcpu %d vcpu_pid %d pcpu %d io %lu \n",entry->kvm_pid,entry->vcpu_id,entry->vcpu_pid,entry->vcpu_running_at,entry->eventfd_time);
+		tmp = find_get_task_by_vpid(entry->vcpu_pid);
+		seq_printf(m,"kvm %d vcpu %d current %llx possible_io %llx\n", entry->kvm_pid, entry->vcpu_pid, tmp->gcurrent_ptr, tmp->possible_io_task);
         }
         return 0;
 }
@@ -491,7 +494,14 @@ int fake_yield_flag=0;
 int vcfs_timer=0;
 int vcfs_timer2=0;
 int vcfs_timer3=0;
+int burrito_flag =0;
+int burrito_flag2 =0;
+int burrito_flag3 =0;
+EXPORT_SYMBOL(burrito_flag3);
 
+EXPORT_SYMBOL(burrito_flag2);
+
+EXPORT_SYMBOL(burrito_flag);
 EXPORT_SYMBOL(vcfs_timer3);
 
 EXPORT_SYMBOL(vcfs_timer);
@@ -528,7 +538,34 @@ static int time_check3(struct seq_file *m, void *v)
         seq_printf(m, "vcfs_timer3 %d\n",vcfs_timer3);
         return 0;
 }
+static int time_check4(struct seq_file *m, void *v)
+{
+        if(burrito_flag)
+            burrito_flag=0;
+        else
+            burrito_flag=1;
+        seq_printf(m, "burrito_flag %d\n",burrito_flag);
+        return 0;
+}
+static int time_check5(struct seq_file *m, void *v)
+{
+        if(burrito_flag2)
+            burrito_flag2=0;
+        else
+            burrito_flag2=1;
+        seq_printf(m, "burrito_flag2 %d\n",burrito_flag2);
+        return 0;
+}
 
+static int time_check6(struct seq_file *m, void *v)
+{
+        if(burrito_flag3)
+            burrito_flag3=0;
+        else
+            burrito_flag3=1;
+        seq_printf(m, "burrito_flag3 %d\n",burrito_flag3);
+        return 0;
+}
 
 static int fake_yield(struct seq_file *m, void *v)
 {
@@ -649,6 +686,9 @@ EXPORT_SYMBOL(ctx_sw_flag);
 EXPORT_SYMBOL(cfs_record_exit);
 EXPORT_SYMBOL(cfs_record_run);
 
+unsigned long ct_offset;
+EXPORT_SYMBOL(ct_offset);
+
 static int yield_level_show(struct seq_file *m, void *v)
 {
 	seq_printf(m, "yield_level %d \n", yield_level);
@@ -704,6 +744,61 @@ yield_level_write2(struct file *filp, const char __user *ubuf,size_t cnt, loff_t
                 return cnt;
         }
 }
+static int yield_level_show3(struct seq_file *m, void *v)
+{
+        seq_printf(m, "ct_offset 0x%llx \n", ct_offset);
+        return 0;
+}
+static int yield_level_open3(struct inode *inode, struct file *filp)
+{
+        return single_open(filp, yield_level_show3, NULL);
+}
+
+static ssize_t
+yield_level_write3(struct file *filp, const char __user *ubuf,size_t cnt, loff_t *ppos)
+{
+        int ret;
+        unsigned long long res;
+        ret = kstrtoull_from_user(ubuf, cnt, 16, &res);
+        if (ret) {
+                /* Negative error code. */
+                return ret;
+        }
+        else
+        {
+                ct_offset=res;
+                return cnt;
+        }
+}
+
+unsigned long  kvm_phys_base;
+EXPORT_SYMBOL(kvm_phys_base);
+static int yield_level_show4(struct seq_file *m, void *v)
+{
+        seq_printf(m, "kvm_phys_base 0x%llx \n", kvm_phys_base);
+        return 0;
+}
+static int yield_level_open4(struct inode *inode, struct file *filp)
+{
+        return single_open(filp, yield_level_show4, NULL);
+}
+
+static ssize_t
+yield_level_write4(struct file *filp, const char __user *ubuf,size_t cnt, loff_t *ppos)
+{
+        int ret;
+        unsigned long long res;
+        ret = kstrtoull_from_user(ubuf, cnt, 16, &res);
+        if (ret) {
+                /* Negative error code. */
+                return ret;
+        }
+        else
+        {
+                kvm_phys_base=res;
+                return cnt;
+        }
+}
 
 
 static const struct proc_ops kvm_file_ops = 
@@ -718,6 +813,20 @@ static const struct proc_ops kvm_file_ops2 =
         .proc_open = yield_level_open2,
         .proc_read = seq_read,
         .proc_write = yield_level_write2,
+};
+
+static const struct proc_ops kvm_file_ops3 =
+{
+        .proc_open = yield_level_open3,
+        .proc_read = seq_read,
+        .proc_write = yield_level_write3,
+};
+
+static const struct proc_ops kvm_file_ops4 =
+{
+        .proc_open = yield_level_open4,
+        .proc_read = seq_read,
+        .proc_write = yield_level_write4,
 };
 
 
@@ -747,6 +856,12 @@ static int __init proc_cmdline_init(void)
 
 	proc_create("yield_level",0660,NULL,&kvm_file_ops);
 	proc_create("yield_time",0660,NULL,&kvm_file_ops2);
+
+	proc_create_single("burrito_flag",0 , NULL, time_check4);
+	proc_create_single("burrito_flag2",0 , NULL, time_check5);
+	proc_create_single("burrito_flag3",0 , NULL, time_check6);
+	proc_create("ct_offset",0777,NULL,&kvm_file_ops3);
+	proc_create("phys_offset",0777,NULL,&kvm_file_ops4);
 
         return 0;
 }

@@ -1369,6 +1369,13 @@ struct task_struct {
     __u64               lannisters_debts; //the debts IO vcpu should pay
 	int 				fake_yield;
     unsigned long       previous_cr3;
+//TONG Patch for Antonio GS idea
+    unsigned long gcurrent_ptr;
+    unsigned long possible_io_task;
+	int				tmp_lock;
+	struct kvm_vcpu		*myvcpu;
+	unsigned long		mygpa;
+
 
 
 	/*

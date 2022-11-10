@@ -50,6 +50,67 @@ TRACE_EVENT(sched_force_sched,
         TP_printk("cpu %d clear %d",__entry->cpu, __entry->ret)
 );
 
+
+TRACE_EVENT(sched_task_current,
+
+        TP_PROTO(int id, unsigned long ptr, unsigned long io_ptr),
+
+        TP_ARGS(id, ptr, io_ptr),
+
+        TP_STRUCT__entry(
+                __field(    int,    id )
+                __field(        unsigned long,    ptr     )
+				__field(        unsigned long,    io_ptr     )
+
+        ),
+
+        TP_fast_assign(
+			    __entry->id    = id;	
+                __entry->ptr    = ptr;
+				__entry->io_ptr    = io_ptr;
+        ),
+
+        TP_printk("task %d task %llx io %llx",__entry->id, __entry->ptr, __entry->io_ptr)
+);
+
+
+TRACE_EVENT(sched_resched1,
+
+        TP_PROTO(int cpu),
+
+        TP_ARGS(cpu),
+
+        TP_STRUCT__entry(
+                __field(    int,    cpu )
+        ),
+
+        TP_fast_assign(
+        __entry->cpu    = cpu;
+        ),
+
+        TP_printk("pid %d",__entry->cpu)
+);
+
+TRACE_EVENT(sched_resched2,
+
+        TP_PROTO(int cpu, int ret),
+
+        TP_ARGS(cpu, ret),
+
+        TP_STRUCT__entry(
+                __field(    int,    cpu )
+                __field(        int,    ret     )
+        ),
+
+        TP_fast_assign(
+        __entry->cpu    = cpu;
+                __entry->ret    = ret;
+        ),
+
+        TP_printk("pid %d cpu %d",__entry->cpu, __entry->ret)
+);
+
+
 TRACE_EVENT(sched_try_wake,
 
         TP_PROTO(__u64 ktime,int svcpu, int dvcpu),
@@ -504,6 +565,45 @@ DEFINE_EVENT_SCHEDSTAT(sched_stat_template, sched_stat_blocked,
  * Tracepoint for accounting runtime (time the task is executing
  * on a CPU).
  */
+
+DECLARE_EVENT_CLASS(sched_vcpu_vruntime,
+
+    TP_PROTO(struct task_struct *tsk, u64 runtime, u64 idealtime, int vruntime ,int vruntime2),
+
+    TP_ARGS(tsk, __perf_count(runtime), idealtime, vruntime, vruntime2),
+
+    TP_STRUCT__entry(
+        __array( char,  comm,   TASK_COMM_LEN   )
+        __field( pid_t, pid         )
+        __field( u64,   runtime         )
+        __field( u64,   idealtime           )
+        __field( int,   vruntime            )
+        __field( int,   vruntime2           )
+    ),
+
+    TP_fast_assign(
+        memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
+        __entry->pid        = tsk->pid;
+        __entry->runtime    = runtime;
+        __entry->idealtime  = idealtime;
+        __entry->vruntime   = vruntime;
+        __entry->vruntime   = vruntime2;
+    ),
+
+    TP_printk("%s pid=%d runtime=%Lu [ns] idealtime=%Lu [ns] lucky=%d yield=%d",
+            __entry->comm,__entry->pid,
+            (unsigned long long)__entry->runtime,
+            (unsigned long long)__entry->idealtime,
+            (int)__entry->vruntime,
+            (int)__entry->vruntime2)
+);
+
+DEFINE_EVENT(sched_vcpu_vruntime, sched_vcpu_vruntime,
+         TP_PROTO(struct task_struct *tsk, u64 runtime, u64 idealtime, int vruntime, int vruntime2),
+         TP_ARGS(tsk, runtime, idealtime, vruntime, vruntime2));
+
+
+
 DECLARE_EVENT_CLASS(sched_stat_runtime,
 
 	TP_PROTO(struct task_struct *tsk, u64 runtime, u64 vruntime),
@@ -632,6 +732,9 @@ DEFINE_EVENT(sched_vcpu_runtime3, sched_vcpu_runtime3,
          TP_ARGS(tsk, runtime, vruntime));
 
 
+DEFINE_EVENT(sched_vcpu_runtime3, sched_vcpu_runtime4,
+         TP_PROTO(struct task_struct *tsk, s64 runtime, u64 vruntime),
+         TP_ARGS(tsk, runtime, vruntime));
 
 /*tong end*/
 /*
