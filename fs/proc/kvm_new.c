@@ -19,13 +19,15 @@
 #include <trace/events/sched.h>
 
 DECLARE_HASHTABLE(vvtbl,10);
+int vcfs_timer=0;
+int vcfs_timer2=0;
 static int _counter, _counter2;
 static struct vcpu_io *vcpu_list;
 static struct kvm_irq_vcpu *irq_list;
 static int booster_pid;
 static int control;
 unsigned long long yield_level=0;
-unsigned long long yield_time=4000000;
+unsigned long long yield_time=2000000;
 EXPORT_SYMBOL(yield_time);
 EXPORT_SYMBOL(yield_level);
 int list_table_vcpu_add(int pid1, int pid2, int id, int cpu)
@@ -266,9 +268,14 @@ void boost_IRQ_vcpu(int vcpu_pid)
 		return;
 		
 	if(!sched_check_task_is_running(IRQ_vcpu)) //if current running is not IRQ_vcpu
+	{
         sched_force_schedule(IRQ_vcpu,0);
-    //else
-    //    IRQ_vcpu->lucky_guy+=1;
+	}
+    else
+	{
+		if(vcfs_timer2)
+	        IRQ_vcpu->lucky_guy+=1;
+	}
 	//if vcpu_io is running. curr->sum_exec_runtime = curr->prev_sum_exec_runtime;
 	//else
 	//vcpu_io -> others vcpu in this pcpu, set_tsk_thread_flag(tsk,TIF_NEED_RESCHED);
@@ -422,7 +429,7 @@ static int vcpu_list_show(struct seq_file *m, void *v)
                 entry=list_entry(pos,struct vcpu_io, lnode);
 		//seq_printf(m,"kvm %d vcpu %d vcpu_pid %d pcpu %d io %lu \n",entry->kvm_pid,entry->vcpu_id,entry->vcpu_pid,entry->vcpu_running_at,entry->eventfd_time);
 		tmp = find_get_task_by_vpid(entry->vcpu_pid);
-		seq_printf(m,"kvm %d vcpu %d current %llx possible_io %llx\n", entry->kvm_pid, entry->vcpu_pid, tmp->gcurrent_ptr, tmp->possible_io_task);
+		seq_printf(m,"kvm %d vcpu %d current %llx gpa %llx\n", entry->kvm_pid, entry->vcpu_pid, tmp->gcurrent_ptr, tmp->mygpa);
         }
         return 0;
 }
@@ -491,8 +498,6 @@ static int cfs_print(struct seq_file *m, void *v)
 int IRQ_redirect=0;
 int IRQ_redirect_log=0;
 int fake_yield_flag=0;
-int vcfs_timer=0;
-int vcfs_timer2=0;
 int vcfs_timer3=0;
 int burrito_flag =0;
 int burrito_flag2 =0;

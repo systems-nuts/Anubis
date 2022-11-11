@@ -5379,7 +5379,7 @@ static void update_burrito(void)
 	kfree(data);
 }
 
-
+extern int vcfs_timer;
 static int handle_ept_misconfig(struct kvm_vcpu *vcpu)
 {
 	gpa_t gpa;
@@ -5395,11 +5395,12 @@ static int handle_ept_misconfig(struct kvm_vcpu *vcpu)
 
 		trace_kvm_fast_mmio(gpa);
         vcpu_task->latest_io_cr3=vmcs_readl(GUEST_CR3);
-        vcpu_task->running_io=0;
 		if(vcpu_task->tmp_lock == 100)
 		{
 			update_burrito();
 			vcpu_task->possible_io_task = vcpu_task->gcurrent_ptr;
+			if(vcfs_timer)
+				vcpu_task->lucky_guy+=1;
 			trace_kvm_get_vcpu_GS_MMIO(vcpu_task->possible_io_task);
 		}
 		return kvm_skip_emulated_instruction(vcpu);
@@ -6691,7 +6692,6 @@ static struct task_struct **final_burrito0;
 static struct task_struct **final_burrito1;
 static struct task_struct **final_burrito2;
 static struct task_struct **final_burrito3;
-static void *data_burrito;
 
 
 static void burrito(struct kvm_vcpu *vcpu, unsigned long GS_base)
@@ -6699,7 +6699,11 @@ static void burrito(struct kvm_vcpu *vcpu, unsigned long GS_base)
 	unsigned long ct;
 	struct task_struct** final;
     struct task_struct *vcpu_task;
+	void *data_burrito;
     vcpu_task = find_get_task_by_vpid(vcpu->pid->numbers[0].nr);
+	if( vcpu_task->tmp_lock == 100)
+		return; 
+	data_burrito =kmalloc(sizeof(struct task_struct*),GFP_KERNEL);
 	gpa_t gpa;
 	ct = ct_offset+GS_base;
 	//printk("GS offset %llx base %llx\n",ct_offset,GS_base);
@@ -6724,11 +6728,16 @@ static void burrito(struct kvm_vcpu *vcpu, unsigned long GS_base)
         final_burrito3 = (struct task_struct**)data_burrito;
 	*/
 	final = (struct task_struct**)data_burrito;
+	if(*final ==  0) 
+	{
+		kfree(data_burrito);
+		return; 
+	}
 	vcpu_task->gcurrent_ptr = *final;
 	vcpu_task->myvcpu = vcpu;
 	vcpu_task->mygpa = gpa;
+	kfree(data_burrito);
 	vcpu_task->tmp_lock = 100;
-	printk("offset %llx base %llx data %llx %llx\n",ct_offset, GS_base, final, *final);
 
 }
 static void burrito2(struct kvm_vcpu *vcpu,unsigned long GS_base)
@@ -6923,17 +6932,6 @@ reenter_guest:
     trace_kvm_get_vcpu_CR3(vmcs_readl(GUEST_CR3),vcpu_task->latest_io_cr3);
     trace_kvm_get_vcpu_GS(vmcs_readl(GUEST_GS_BASE));
     trace_kvm_get_vcpu_GS(vmcs_readl(HOST_GS_BASE));
-    if(vmcs_readl(GUEST_CR3)==vcpu_task->latest_io_cr3)
-    {
-//        trace_kvm_get_vcpu_GS(vmcs_readl(GUEST_CR3));
-        vcpu_task->running_io = 0;
-    }
-    else
-    {
-        vcpu_task->running_io += 1;
-        if(vcpu_task->running_io>10)
-            vcpu_task->running_io =10;
-    }
     //end patch
     
 
@@ -8111,7 +8109,6 @@ static int __init vmx_init(void)
 {
 	int r, cpu;
 	//TONG PATCH 
-	data_burrito =kmalloc(sizeof(struct task_struct*),GFP_KERNEL);
 	burrito_caller = update_burrito;
 #if IS_ENABLED(CONFIG_HYPERV)
 	/*

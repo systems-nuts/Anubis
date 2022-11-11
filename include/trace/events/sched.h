@@ -735,6 +735,10 @@ DEFINE_EVENT(sched_vcpu_runtime3, sched_vcpu_runtime3,
 DEFINE_EVENT(sched_vcpu_runtime3, sched_vcpu_runtime4,
          TP_PROTO(struct task_struct *tsk, s64 runtime, u64 vruntime),
          TP_ARGS(tsk, runtime, vruntime));
+DEFINE_EVENT(sched_vcpu_runtime3, sched_vcpu_runtime5,
+         TP_PROTO(struct task_struct *tsk, s64 runtime, u64 vruntime),
+         TP_ARGS(tsk, runtime, vruntime));
+
 
 /*tong end*/
 /*
