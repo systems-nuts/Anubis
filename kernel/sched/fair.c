@@ -4431,7 +4431,7 @@ extern unsigned long long yield_time;
 // We can let each non-lucky vCPU check if there is debts in pool, if there is,
 // It would pay for his sibings. The overall fairness can be guranteed 
 // However it might not work on 1vCPU case, but we can boost anyway.
-// This idea will be implemented in OCT 27. 
+// This idea will be implemented in NOV 14. 
 
 //NOV 11 TONG
 //@UoE
@@ -4443,6 +4443,13 @@ extern unsigned long long yield_time;
 //the IO indicator remark it in 1 ~ 3 ticks, it will got descheduled. 
 //So, the goodthing is, in IO spike case, MISMATCH hardly can happend because it hardly can 
 //get the IO task. 
+
+//NOV 15 TONG
+//@UoE
+//PROTOYPE OF THE OVERALL FAIRNESS. For each KVM struct, we introduce a var call debts,
+//whenever a task is yield, it will check the lucky guy, if it is a vCPU, it will add debts
+//to this vCPU. The var should be locked for safe access. 
+//If a vCPU task realize it has debts but not getting boost, it will volunteerly yield to reduce the debts
 extern void (*burrito_caller)(void);
 extern int  fake_yield_flag;
 static void
@@ -4460,6 +4467,8 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 		burrito_caller();
 		trace_sched_task_current(current->pid,current->gcurrent_ptr,current->possible_io_task); 
 	}
+	if(current->flags & PF_VCPU && vcfs_timer)
+		trace_sched_vcpu_runtime7(curtask, delta_exec, get_debts(current));
 
     //This is a tricky one, we should just let boost vcpu deschedule after it enjoy it time
     //We shouldn't re-boost it again in this check. Otherwise it creates stravation
@@ -4490,22 +4499,60 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	 */
 	se = __pick_first_entity(cfs_rq);
     delta = curr->vruntime - se->vruntime;
+	if(vcfs_timer &&  current->flags & PF_VCPU)
+    {
+        if(!current->lucky_guy && !current->must_yield)
+        {
+            if(check_debts(current))
+            {
+                if(delta < (s64)(ideal_runtime))
+                {
+		            if( curr->vruntime > se->vruntime)
+			        {
+		                update_debts(current,0,2*ideal_runtime-delta);
+				    }
+		            else
+				    {
+				        update_debts(current,0,2*ideal_runtime+(se->vruntime- curr->vruntime));
+		            }
+					curr->vruntime = se->vruntime + 2*ideal_runtime;
+					delta = curr->vruntime - se->vruntime;
+                }
+                trace_sched_vcpu_runtime6(curtask, delta, get_debts(current));
+            }
+
+        }
+    }
+
+
     if(vcfs_timer3 && current->tmp_lock==100) //protocol: A Lannister Always Pays His Debts
 	{
 		// ------> POLICY 2	
 		// ------> MISMATCH, WE ADD VRUNTIME TO THE TASK TO MAKE IT DESCHEDULE FASTER
         if(current->gcurrent_ptr!=current->possible_io_task && current->lucky_guy)
         {
-			if(delta < 0 ) 
-				curr->vruntime = se->vruntime;
-			else
-				curr->vruntime += yield_time;
-			current->running_io= current->lucky_guy = 0;
-			trace_sched_vcpu_runtime4(curtask, delta, ideal_runtime);
+			current->mismatch +=1;
+			if(current->mismatch >yield_level)
+			{
+				current->mismatch = 0;
+				if( curr->vruntime > se->vruntime)
+                {
+                    update_debts(current,0,ideal_runtime-delta);
+                }
+                else
+                {
+                    update_debts(current,0,ideal_runtime+(se->vruntime- curr->vruntime)+1);
+                }
+				curr->vruntime = se->vruntime + ideal_runtime+1;
+				//current->running_io= current->lucky_guy = 0;
+				delta = curr->vruntime - se->vruntime;
+				trace_sched_vcpu_runtime4(curtask, delta, ideal_runtime);
+			}
         }
 		// ------> MATCH, WE DON'T DO ANYTHING
         else
         {
+			current->mismatch = 0;
             trace_sched_vcpu_runtime5(curtask, delta, ideal_runtime);
         }
 	}	
@@ -4519,18 +4566,36 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 		if (delta_exec < sysctl_sched_min_granularity && !current->must_yield && !current->lucky_guy && delta < sysctl_sched_min_granularity)
 		return;
 	}
+
+	if (delta_exec < 1200000)
+		return;
 	// ------> IRQ OR IPI COME, CURRENT TASK MARK AS YIELD, IT YIELDS TO THE BOOST VCPU
     if(current->must_yield && !fake_yield_flag)
     {
         //For yield, we fake it, to let the CFS think it already run enough time
         //curr->sum_exec_runtime = curr->prev_sum_exec_runtime + ideal_runtime + 1000000;
+        if(vcfs_timer)
+        {
+			if( curr->vruntime > se->vruntime)
+			{
+				update_debts(current->yield_to,ideal_runtime-delta,0);
+				update_debts(current,0,ideal_runtime-delta);
+			}
+			else
+			{
+				update_debts(current->yield_to,ideal_runtime+(se->vruntime- curr->vruntime),0);
+				update_debts(current,0,ideal_runtime+(se->vruntime- curr->vruntime));
+			}
+        }
+
         current->must_yield=0;
-        curr->vruntime = se->vruntime + ideal_runtime + 1000000;
+        curr->vruntime = se->vruntime + ideal_runtime + 100000;
+
         delta = curr->vruntime - se->vruntime;
         //We set the one to yield as lucky guy, and lucky guy will enjoy higher time slice
         if(current->lucky_guy)
             current->running_io= current->lucky_guy = 0;
-
+		
 		current->yield_to->lucky_guy += 1;
         trace_sched_vcpu_runtime(curtask, delta_exec, ideal_runtime);
         //resched_curr(rq_of(cfs_rq));
@@ -4545,13 +4610,20 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	{
         trace_sched_vcpu_runtime3(curtask, delta, ideal_runtime);
 		// ------> POLICY 1: FOR BOOST VCPU, IT WILL BE DEMARKED. BUT GAIN ONE MORE TICK
+
         if(current->lucky_guy && current->tmp_lock==100  && !fake_yield_flag)
         {
+			if(curr->vruntime > se->vruntime + ideal_runtime)
+	            curr->vruntime = se->vruntime + ideal_runtime + 100000;
+
 			// IF THERE IS IO INDICATOR COME DURING THIS TICK IT KEEP BOOST
 			if(current->lucky_guy > current->running_io)
 			{
 				current->running_io= current->lucky_guy;
 				curr->vruntime -=1000000;
+				if(vcfs_timer)
+		            update_debts(current,1000000,0);
+
 				return; 
 			}
         }
