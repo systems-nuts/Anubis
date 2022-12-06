@@ -4388,7 +4388,8 @@ dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 
 /*
  * Preempt the current task with a newly woken task if needed:
- */
+*/
+static void set_next_buddy(struct sched_entity *se);
 static void set_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *se);
 static void set_skip_buddy(struct sched_entity *se);
 //Huawei boosting 
@@ -4456,8 +4457,9 @@ static void
 check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 {
 	unsigned long ideal_runtime, delta_exec;
-	struct sched_entity *se, *__se;
+	struct sched_entity *se, *__se, *___se;
     struct task_struct *tsk, *curtask, *yield_to_task;
+	int skip_time;
 	s64 delta;
 	ideal_runtime = sched_slice(cfs_rq, curr);
 	delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
@@ -4597,6 +4599,26 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
             current->running_io= current->lucky_guy = 0;
 		
 		current->yield_to->lucky_guy += 1;
+		if (se != &current->yield_to->se)
+		{
+			skip_time=1;
+			___se=se;
+			while(___se!=NULL)
+			{
+				if(se != &current->yield_to->se)
+				{
+					___se=__pick_next_entity(___se);
+					skip_time++;
+				}
+				else
+				{
+					break;
+				}
+			}
+			update_debts(current->yield_to,ideal_runtime*skip_time,0);
+//			set_skip_buddy(se);
+			set_next_buddy(&current->yield_to->se);
+		}
         trace_sched_vcpu_runtime(curtask, delta_exec, ideal_runtime);
         //resched_curr(rq_of(cfs_rq));
         //clear_buddies(cfs_rq, curr);
@@ -5818,7 +5840,6 @@ enqueue_throttle:
 	hrtick_update(rq);
 }
 
-static void set_next_buddy(struct sched_entity *se);
 
 /*
  * The dequeue_task method is called before nr_running is
