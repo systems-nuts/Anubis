@@ -44,6 +44,8 @@ static int kvm_set_ioapic_irq(struct kvm_kernel_irq_routing_entry *e,
 				line_status);
 }
 extern int IRQ_redirect;
+extern int IRQ_redirect_noboost;
+extern int IRQ_redirect_onlyredirect;
 extern void boost_IRQ_vcpu(int);
 extern int kvm_vcpu_young(struct kvm *,int);
 int kvm_irq_delivery_to_apic(struct kvm *kvm, struct kvm_lapic *src,
@@ -179,10 +181,18 @@ int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
 			return -EINVAL;
 
 		kvm_set_msi_irq(kvm, e, &irq);
+		if(IRQ_redirect_noboost)
+		{
+			//dest=kvm_vcpu_young(kvm,irq.dest_id);
+            trace_kvm_irq_id_get(irq.dest_id,e->msi.address_lo);
+			if(IRQ_redirect_onlyredirect)
+				irq.dest_id = 0x1000;
+		}
 	    if(IRQ_redirect)
         {
 
 			dest=kvm_vcpu_young(kvm,irq.dest_id);
+			trace_kvm_irq_id_get(irq.dest_id, dest);
 			if(dest)
 			{
                 //we boost the IRQ vcpu anyway
@@ -204,6 +214,7 @@ int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
 			}
 //			printk(" %s after irq dest_id %u vector %u\n",__func__,irq.dest_id,irq.vector);
         }
+		/*
 		else
 		{
 			if(irq.dest_id > 8)
@@ -212,6 +223,7 @@ int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
                      kvm->vcpus[order_base_2(irq.dest_id)]->pid->numbers[0].nr,
                         (int)kvm->userspace_pid);
 		}
+		*/
 	    trace_kvm_msi_set_irq(e->msi.address_lo | (kvm->arch.x2apic_format ?
                (u64)e->msi.address_hi << 32 : 0),
                            e->msi.data);

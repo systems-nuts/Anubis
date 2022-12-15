@@ -4398,7 +4398,7 @@ static void set_skip_buddy(struct sched_entity *se);
 extern int cfs_print_flag;
 extern int vcfs_timer;
 extern int vcfs_timer2;
-
+extern int vcfs_timer4;
 extern unsigned long long yield_level;
 extern unsigned long long yield_time;
 
@@ -4459,7 +4459,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	unsigned long ideal_runtime, delta_exec;
 	struct sched_entity *se, *__se, *___se;
     struct task_struct *tsk, *curtask, *yield_to_task;
-	int skip_time;
+	int skip_time, own_time;
 	s64 delta;
 	ideal_runtime = sched_slice(cfs_rq, curr);
 	delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
@@ -4503,24 +4503,25 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
     delta = curr->vruntime - se->vruntime;
 	if(vcfs_timer &&  current->flags & PF_VCPU)
     {
-        if(!current->lucky_guy && !current->must_yield)
+        if(delta < (s64)(ideal_runtime))
         {
-            if(check_debts(current))
+            if((!current->lucky_guy && !current->must_yield))
             {
-                if(delta < (s64)(ideal_runtime))
+                if(get_debts(current) > 24000000)
                 {
+					trace_sched_vcpu_runtime6(curtask, delta, get_debts(current));
+
 		            if( curr->vruntime > se->vruntime)
 			        {
-		                update_debts(current,0,2*ideal_runtime-delta);
+		                update_debts(current,0,ideal_runtime-delta);
 				    }
 		            else
 				    {
-				        update_debts(current,0,2*ideal_runtime+(se->vruntime- curr->vruntime));
+				        update_debts(current,0,ideal_runtime+(se->vruntime- curr->vruntime));
 		            }
-					curr->vruntime = se->vruntime + 2*ideal_runtime;
-					delta = curr->vruntime - se->vruntime;
-                }
-                trace_sched_vcpu_runtime6(curtask, delta, get_debts(current));
+					curr->vruntime = se->vruntime + ideal_runtime-1000000;
+					delta = ideal_runtime - 1000000;
+				}
             }
 
         }
@@ -4543,7 +4544,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
                 }
                 else
                 {
-                    update_debts(current,0,ideal_runtime+(se->vruntime- curr->vruntime)+1);
+                    update_debts(current,0,ideal_runtime+(se->vruntime- curr->vruntime));
                 }
 				curr->vruntime = se->vruntime + ideal_runtime+1;
 				//current->running_io= current->lucky_guy = 0;
@@ -4601,7 +4602,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 		current->yield_to->lucky_guy += 1;
 		if (se != &current->yield_to->se)
 		{
-			skip_time=1;
+			skip_time=0;
 			___se=se;
 			while(___se!=NULL)
 			{
