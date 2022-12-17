@@ -16,7 +16,7 @@
 extern void kvm_get_kvm(struct kvm *kvm);
 static int check_debts(struct task_struct *task);
 static signed long long get_debts(struct task_struct *task);
-static int update_debts(struct task_struct *task, signed long long debts, signed long long money);
+static signed long long update_debts(struct task_struct *task, signed long long debts, signed long long money);
 /*
  * Hash table implementation for scheduler boosting
  *
@@ -135,10 +135,11 @@ static int check_debts(struct task_struct *task)
 }
 
 //RETURN 1: Update successfully
-static int update_debts(struct task_struct *task, signed long long debts, signed long long money)
+static signed long long update_debts(struct task_struct *task, signed long long debts, signed long long money)
 {
 	struct kvm *my_kvm;
     int ret;
+	signed long long value;
     ret = get_kvm_by_vpid(task->pid,&my_kvm);
     if(ret)
         return 0;
@@ -146,13 +147,19 @@ static int update_debts(struct task_struct *task, signed long long debts, signed
 	spin_lock_irq(&debts_lock);
 	my_kvm->debts += debts;
 	if(my_kvm->debts >  money)
+	{
 		my_kvm->debts -= money;
+		value = money;
+	}
 	else
+	{
+		value = my_kvm->debts;
 		my_kvm->debts =0;
+	}
 	spin_unlock_irq(&debts_lock);
 	rcu_read_unlock();
 
-	return 1;
+	return value;
 }
 
 static signed long long get_debts(struct task_struct *task)

@@ -4460,6 +4460,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	struct sched_entity *se, *__se, *___se;
     struct task_struct *tsk, *curtask, *yield_to_task;
 	int skip_time, own_time;
+	signed long long compensate; //debts that paied
 	s64 delta;
 	ideal_runtime = sched_slice(cfs_rq, curr);
 	delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
@@ -4479,7 +4480,9 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	if (delta_exec > ideal_runtime) {
         //If passed to here, which means I used all of my lucky already
         trace_sched_vcpu_runtime2(curtask, delta_exec, ideal_runtime);
+		current->mismatch = 0;
 		resched_curr(rq_of(cfs_rq));
+
 		/*
 		 * The current task ran long enough, ensure it doesn't get
 		 * re-elected due to buddy favours.
@@ -4507,20 +4510,40 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
         {
             if((!current->lucky_guy && !current->must_yield))
             {
-                if(get_debts(current) > 24000000)
+                if(get_debts(current) > 24000000 && get_debts(current) <= 500000000)
                 {
-					trace_sched_vcpu_runtime6(curtask, delta, get_debts(current));
 
 		            if( curr->vruntime > se->vruntime)
 			        {
-		                update_debts(current,0,ideal_runtime-delta);
+		                compensate = update_debts(current,0,ideal_runtime-delta);
 				    }
 		            else
 				    {
-				        update_debts(current,0,ideal_runtime+(se->vruntime- curr->vruntime));
+				        compensate = update_debts(current,0,ideal_runtime);
 		            }
-					curr->vruntime = se->vruntime + ideal_runtime-1000000;
-					delta = ideal_runtime - 1000000;
+					trace_sched_vcpu_runtime6(curtask, delta, get_debts(current));
+					curr->vruntime = se->vruntime + compensate;
+					delta = curr->vruntime - se->vruntime;
+				}
+				else if (get_debts(current) > 500000000) // extremly unfair
+				{
+					if( curr->vruntime > se->vruntime)
+                    {
+                        compensate = update_debts(current,0,2*ideal_runtime-delta);
+                    }
+                    else
+                    {
+                        compensate = update_debts(current,0,2*ideal_runtime);
+                    }
+                    trace_sched_vcpu_runtime6(curtask, delta, get_debts(current));
+                    curr->vruntime = se->vruntime + compensate;
+                    delta = curr->vruntime - se->vruntime;
+
+				}
+				else
+				{
+					trace_sched_vcpu_runtime6(curtask, 666, get_debts(current));
+
 				}
             }
 
@@ -4532,19 +4555,18 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	{
 		// ------> POLICY 2	
 		// ------> MISMATCH, WE ADD VRUNTIME TO THE TASK TO MAKE IT DESCHEDULE FASTER
-        if(current->gcurrent_ptr!=current->possible_io_task && current->lucky_guy)
+        if(current->gcurrent_ptr!=current->possible_io_task && current->lucky_guy && get_debts(current) > 48000000)
         {
 			current->mismatch +=1;
-			if(current->mismatch >yield_level)
+			if(current->mismatch == yield_level+1)
 			{
-				current->mismatch = 0;
 				if( curr->vruntime > se->vruntime)
                 {
                     update_debts(current,0,ideal_runtime-delta);
                 }
                 else
                 {
-                    update_debts(current,0,ideal_runtime+(se->vruntime- curr->vruntime));
+                    update_debts(current,0,ideal_runtime);
                 }
 				curr->vruntime = se->vruntime + ideal_runtime+1;
 				//current->running_io= current->lucky_guy = 0;
@@ -4555,7 +4577,6 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 		// ------> MATCH, WE DON'T DO ANYTHING
         else
         {
-			current->mismatch = 0;
             trace_sched_vcpu_runtime5(curtask, delta, ideal_runtime);
         }
 	}	
@@ -4586,7 +4607,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 			}
 			else
 			{
-				update_debts(current->yield_to,ideal_runtime+(se->vruntime- curr->vruntime),0);
+				update_debts(current->yield_to,ideal_runtime,0);
 				update_debts(current,0,ideal_runtime+(se->vruntime- curr->vruntime));
 			}
         }
@@ -4650,6 +4671,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 				return; 
 			}
         }
+		current->mismatch = 0;
 		current->running_io= current->lucky_guy = 0;
 		resched_curr(rq_of(cfs_rq));
 	}
