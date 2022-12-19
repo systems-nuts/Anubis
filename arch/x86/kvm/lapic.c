@@ -1315,7 +1315,7 @@ void kvm_apic_set_eoi_accelerated(struct kvm_vcpu *vcpu, int vector)
 EXPORT_SYMBOL_GPL(kvm_apic_set_eoi_accelerated);
 
 
-extern void boost_IO_vcpu(int,int);
+extern void boost_IO_vcpu(struct kvm*,int,int);
 
 void kvm_apic_send_ipi(struct kvm_lapic *apic, u32 icr_low, u32 icr_high)
 {
@@ -1339,7 +1339,7 @@ void kvm_apic_send_ipi(struct kvm_lapic *apic, u32 icr_low, u32 icr_high)
         (int)apic->vcpu->kvm->userspace_pid);	
 	if(cfs_print_flag)
 	{
-		boost_IO_vcpu(current->pid,irq.dest_id);
+		boost_IO_vcpu(apic->vcpu->kvm,current->pid,irq.dest_id);
 		//trace_kvm_apic_ipi(icr_low, irq.dest_id);
 		
 	}

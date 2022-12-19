@@ -163,7 +163,7 @@ static int kvm_hv_set_sint(struct kvm_kernel_irq_routing_entry *e,
 
 	return kvm_hv_synic_set_irq(kvm, e->hv_sint.vcpu, e->hv_sint.sint);
 }
-
+extern unsigned long long yield_time;
 int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
 			      struct kvm *kvm, int irq_source_id, int level,
 			      bool line_status)
@@ -183,21 +183,29 @@ int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
 		kvm_set_msi_irq(kvm, e, &irq);
 		if(IRQ_redirect_noboost)
 		{
-			//dest=kvm_vcpu_young(kvm,irq.dest_id);
-            trace_kvm_irq_id_get(irq.dest_id,e->msi.address_lo);
-			if(IRQ_redirect_onlyredirect)
-				irq.dest_id = 0x1000;
+		//	dest=kvm_vcpu_young(kvm,irq.dest_id);
+		//	if(IRQ_redirect_onlyredirect)
+		//		irq.dest_id = yield_time;
+			trace_kvm_irq_id_get(irq.dest_id,(1 << (kvm->created_vcpus-1)));
+		}
+		if(IRQ_redirect_onlyredirect)
+		{
+			if(irq.dest_id > (1 << (kvm->created_vcpus-1)))
+				irq.dest_id = 1;
+			dest=kvm_vcpu_young(kvm,irq.dest_id);
+			if(dest)
+				irq.dest_id = dest;
+			trace_kvm_irq_id_get(irq.dest_id,dest);
 		}
 	    if(IRQ_redirect)
         {
-
 			dest=kvm_vcpu_young(kvm,irq.dest_id);
 			trace_kvm_irq_id_get(irq.dest_id, dest);
 			if(dest)
 			{
                 //we boost the IRQ vcpu anyway
-                if(irq.dest_id > 8)
-                    irq.dest_id = 8;
+                if(irq.dest_id > (1 << (kvm->created_vcpus-1)))
+                    irq.dest_id = (1 << (kvm->created_vcpus-1));
                 boost_IRQ_vcpu(kvm->vcpus[order_base_2(irq.dest_id)]->pid->numbers[0].nr);
 				irq.dest_id = dest; //we still redirect the irq
 				trace_kvm_irq_time_get(ktime_get(),
@@ -206,7 +214,9 @@ int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
 			}
 			else
 			{
-				if(irq.dest_id > 8)   irq.dest_id = 8;
+				trace_kvm_irq_id_get(irq.dest_id, dest);
+				if(irq.dest_id > (1 << (kvm->created_vcpus-1)))
+					irq.dest_id = (1 << (kvm->created_vcpus-1));
 				trace_kvm_irq_time_get(ktime_get(),
                                 kvm->vcpus[order_base_2(irq.dest_id)]->pid->numbers[0].nr,
                                                 (int)kvm->userspace_pid);

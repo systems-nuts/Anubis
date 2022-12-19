@@ -18,6 +18,8 @@
 #include <linux/kernel.h>
 #include <trace/events/sched.h>
 
+DEFINE_SPINLOCK(debts_lock);
+EXPORT_SYMBOL(debts_lock);
 DECLARE_HASHTABLE(vvtbl,10);
 int vcfs_timer=0;
 int vcfs_timer2=0;
@@ -129,8 +131,8 @@ int kvm_vcpu_young(struct kvm *kvm, int dest_id)
     struct vcpu_io *entry;
     struct task_struct *IO_vcpu;
 	int ret = 0, irq_vcpu=0, vcpuID=0;
-	if(dest_id > 8)
-		dest_id = 8; 
+	if(dest_id > (1 << (kvm->created_vcpus-1)))
+		dest_id = (1 << (kvm->created_vcpus-1)); 
 	vcpu=kvm->vcpus[order_base_2(dest_id)];
 	IO_vcpu = find_get_task_by_vpid(vcpu->pid->numbers[0].nr);
 	if(sched_check_task_is_running(IO_vcpu))
@@ -175,13 +177,12 @@ int kvm_vcpu_young(struct kvm *kvm, int dest_id)
 	
 }
 EXPORT_SYMBOL(kvm_vcpu_young);
-void boost_IO_vcpu(int vcpu_pid, int dest_id)
+void boost_IO_vcpu(struct kvm *kvm, int vcpu_pid, int dest_id)
 {
-	//if IRQ vcpu is the IPI sender
 	dest_id=order_base_2(dest_id);
-	if(dest_id  > 3) 
-		dest_id = 3;
-
+	if(dest_id > kvm->created_vcpus-1) //incase it goes to all node
+        dest_id = kvm->created_vcpus-1; 
+		//default goes to 1 -> vcpu0
 	//CLEARLY WE NEED SOME CHANGE TO UPDATE THIS, 
 	//BECAUSE CURRENTLY IT JUST BOOST ALL IPI, 
 	//LET IT ONLY BOOST THE IPI THAT WAKE UP THE 
@@ -497,8 +498,11 @@ static int cfs_print(struct seq_file *m, void *v)
 }
 int IRQ_redirect=0;
 int IRQ_redirect_log=0;
+int IRQ_redirect_noboost =0;
+int IRQ_redirect_onlyredirect=0;
 int fake_yield_flag=0;
 int vcfs_timer3=0;
+int vcfs_timer4=0;
 int burrito_flag =0;
 int burrito_flag2 =0;
 int burrito_flag3 =0;
@@ -511,8 +515,12 @@ EXPORT_SYMBOL(vcfs_timer3);
 
 EXPORT_SYMBOL(vcfs_timer);
 EXPORT_SYMBOL(vcfs_timer2);
+EXPORT_SYMBOL(vcfs_timer4);
+
 EXPORT_SYMBOL(fake_yield_flag);
 EXPORT_SYMBOL(IRQ_redirect);
+EXPORT_SYMBOL(IRQ_redirect_noboost);
+EXPORT_SYMBOL(IRQ_redirect_onlyredirect);
 EXPORT_SYMBOL(IRQ_redirect_log);
 
 static int time_check(struct seq_file *m, void *v)
@@ -543,6 +551,16 @@ static int time_check3(struct seq_file *m, void *v)
         seq_printf(m, "vcfs_timer3 %d\n",vcfs_timer3);
         return 0;
 }
+static int time_check44(struct seq_file *m, void *v)
+{
+        if(vcfs_timer4)
+            vcfs_timer4=0;
+        else
+            vcfs_timer4=1;
+        seq_printf(m, "vcfs_timer4 %d\n",vcfs_timer4);
+        return 0;
+}
+
 static int time_check4(struct seq_file *m, void *v)
 {
         if(burrito_flag)
@@ -602,7 +620,24 @@ static int irq_check(struct seq_file *m, void *v)
         seq_printf(m, "IRQ_redirect %d\n",IRQ_redirect);
         return 0;
 }
-
+static int irq_noboost(struct seq_file *m, void *v)
+{
+        if(IRQ_redirect_noboost)
+                IRQ_redirect_noboost=0;
+        else
+                IRQ_redirect_noboost=1;
+        seq_printf(m, "IRQ_redirect_noboost %d\n",IRQ_redirect_noboost);
+        return 0;
+}
+static int irq_redirect_only(struct seq_file *m, void *v)
+{
+        if(IRQ_redirect_onlyredirect)
+                IRQ_redirect_onlyredirect=0;
+        else
+                IRQ_redirect_onlyredirect=1;
+        seq_printf(m, "IRQ_redirect_onlyredirect %d\n",IRQ_redirect_onlyredirect);
+        return 0;
+}
 
 int check_cpu_boosting(int cpu)
 {
@@ -845,6 +880,7 @@ static int __init proc_cmdline_init(void)
 	INIT_LIST_HEAD(&vcpu_list->lnode);
 	_counter=0;
 	_counter2=0;
+	ct_offset=0;
 	//tsk=kthread_run(vcpu_boosting_worker, NULL, "Huawei_new_Boosting");
         //if (IS_ERR(tsk)) {
          //       printk(KERN_ERR "Cannot create KVM_IO, %ld\n", PTR_ERR(tsk));
@@ -853,11 +889,14 @@ static int __init proc_cmdline_init(void)
 	proc_create_single("IPI_boost", 0, NULL, cfs_print);
 	proc_create_single("IRQ_redirect",0 , NULL, irq_check);
 	proc_create_single("IRQ_redirect_log",0 , NULL, irq_check2);
+	proc_create_single("REDIRECT_ONLY",0 , NULL, irq_redirect_only);
+	proc_create_single("NOBOOST_IRQ",0 , NULL, irq_noboost);
 	proc_create_single("Check_IRQ_record",0 , NULL, cfs_ctx_sw_show);
 	proc_create_single("Fake_yield_flag",0 , NULL, fake_yield);
     proc_create_single("Vcfs_timer",0 , NULL, time_check);
     proc_create_single("Vcfs_timer2",0 , NULL, time_check2);
     proc_create_single("Vcfs_timer3",0 , NULL, time_check3);
+	proc_create_single("Vcfs_timer4",0 , NULL, time_check44);
 
 	proc_create("yield_level",0660,NULL,&kvm_file_ops);
 	proc_create("yield_time",0660,NULL,&kvm_file_ops2);
