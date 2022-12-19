@@ -4470,8 +4470,8 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 		burrito_caller();
 		trace_sched_task_current(current->pid,current->gcurrent_ptr,current->possible_io_task); 
 	}
-	if(current->flags & PF_VCPU && vcfs_timer)
-		trace_sched_vcpu_runtime7(curtask, delta_exec, get_debts(current));
+//	if(current->flags & PF_VCPU && vcfs_timer)
+//		trace_sched_vcpu_runtime7(curtask, delta_exec, get_debts(current));		
 
     //This is a tricky one, we should just let boost vcpu deschedule after it enjoy it time
     //We shouldn't re-boost it again in this check. Otherwise it creates stravation
@@ -4504,13 +4504,15 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	 */
 	se = __pick_first_entity(cfs_rq);
     delta = curr->vruntime - se->vruntime;
+	trace_sched_vcpu_runtime7(curtask,curr->vruntime,se->vruntime);
+
 	if(vcfs_timer &&  current->flags & PF_VCPU)
     {
         if(delta < (s64)(ideal_runtime))
         {
             if((!current->lucky_guy && !current->must_yield))
             {
-                if(get_debts(current) > 24000000 && get_debts(current) <= 500000000)
+                if(get_debts(current) > 24000000 && (get_debts(current) <= 500000000))
                 {
 
 		            if( curr->vruntime > se->vruntime)
@@ -4649,7 +4651,9 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 
 	if (delta < 0)
 		return;
-	trace_sched_vcpu_vruntime(curtask, delta_exec, ideal_runtime,current->lucky_guy ,current->must_yield);
+	trace_sched_vcpu_vruntime(curtask, delta_exec, ideal_runtime,curr->vruntime ,se->vruntime);
+	if (vcfs_timer4 && delta_exec < 7000000)
+		return; 
 	if (delta > ideal_runtime)
 	{
         trace_sched_vcpu_runtime3(curtask, delta, ideal_runtime);
@@ -4664,7 +4668,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 			if(current->lucky_guy > current->running_io)
 			{
 				current->running_io= current->lucky_guy;
-				curr->vruntime -=1000000;
+				curr->vruntime = se->vruntime + ideal_runtime - 1000000;
 				if(vcfs_timer)
 		            update_debts(current,1000000,0);
 
@@ -11699,12 +11703,12 @@ int sched_check_task_is_running(struct task_struct *tsk)
 	}
 	if(!entity_is_task(se))
 	{
-                return 0;
+        return 0;
 	}
 	curr = task_of(rq->curr);
 	if(!curr)
 	{
-                return 0;
+        return 0;
 	}
 	if(curr->pid == tsk->pid)
 	{
