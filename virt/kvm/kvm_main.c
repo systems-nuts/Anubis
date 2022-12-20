@@ -819,6 +819,7 @@ static struct kvm *kvm_create_vm(unsigned long type)
         //Start Huawei
         printk("KVM CREATE! PID: %d\n",current->pid);
         list_kvm_irq_list_add(current->pid);
+		kvm->debts=0;
         //Finish Huawei
 	mutex_unlock(&kvm_lock);
 

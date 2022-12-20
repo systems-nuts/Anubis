@@ -568,7 +568,7 @@ DEFINE_EVENT_SCHEDSTAT(sched_stat_template, sched_stat_blocked,
 
 DECLARE_EVENT_CLASS(sched_vcpu_vruntime,
 
-    TP_PROTO(struct task_struct *tsk, u64 runtime, u64 idealtime, int vruntime ,int vruntime2),
+    TP_PROTO(struct task_struct *tsk, u64 runtime, u64 idealtime, u64 vruntime ,u64 vruntime2),
 
     TP_ARGS(tsk, __perf_count(runtime), idealtime, vruntime, vruntime2),
 
@@ -577,8 +577,8 @@ DECLARE_EVENT_CLASS(sched_vcpu_vruntime,
         __field( pid_t, pid         )
         __field( u64,   runtime         )
         __field( u64,   idealtime           )
-        __field( int,   vruntime            )
-        __field( int,   vruntime2           )
+        __field( u64,   vruntime            )
+        __field( u64,   vruntime2           )
     ),
 
     TP_fast_assign(
@@ -590,16 +590,16 @@ DECLARE_EVENT_CLASS(sched_vcpu_vruntime,
         __entry->vruntime   = vruntime2;
     ),
 
-    TP_printk("%s pid=%d runtime=%Lu [ns] idealtime=%Lu [ns] lucky=%d yield=%d",
+    TP_printk("%s pid=%d runtime=%Lu [ns] idealtime=%Lu [ns] lucky=%Lu yield=%Lu",
             __entry->comm,__entry->pid,
             (unsigned long long)__entry->runtime,
             (unsigned long long)__entry->idealtime,
-            (int)__entry->vruntime,
-            (int)__entry->vruntime2)
+            (unsigned long long)__entry->vruntime,
+            (unsigned long long)__entry->vruntime2)
 );
 
 DEFINE_EVENT(sched_vcpu_vruntime, sched_vcpu_vruntime,
-         TP_PROTO(struct task_struct *tsk, u64 runtime, u64 idealtime, int vruntime, int vruntime2),
+         TP_PROTO(struct task_struct *tsk, u64 runtime, u64 idealtime, u64 vruntime, u64 vruntime2),
          TP_ARGS(tsk, runtime, idealtime, vruntime, vruntime2));
 
 
@@ -738,6 +738,43 @@ DEFINE_EVENT(sched_vcpu_runtime3, sched_vcpu_runtime4,
 DEFINE_EVENT(sched_vcpu_runtime3, sched_vcpu_runtime5,
          TP_PROTO(struct task_struct *tsk, s64 runtime, u64 vruntime),
          TP_ARGS(tsk, runtime, vruntime));
+DECLARE_EVENT_CLASS(sched_vcpu_runtime000,
+
+        TP_PROTO(struct task_struct *tsk, s64 runtime, s64 vruntime),
+
+        TP_ARGS(tsk, __perf_count(runtime), vruntime),
+
+        TP_STRUCT__entry(
+            __array( char,  comm,   TASK_COMM_LEN   )
+            __field( pid_t, pid         )
+            __field( s64,   runtime         )
+            __field( s64,   vruntime            )
+        ),
+
+        TP_fast_assign(
+            memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
+            __entry->pid        = tsk->pid;
+            __entry->runtime    = runtime;
+            __entry->vruntime   = vruntime;
+        ),
+
+        TP_printk("comm=%s pid=%d runtime=%Lu [ns] ideatime=%Lu [ns]",
+                __entry->comm, __entry->pid,
+                (signed long long)__entry->runtime,
+                (signed long long)__entry->vruntime)
+
+);
+
+DEFINE_EVENT(sched_vcpu_runtime000, sched_vcpu_runtime6,
+         TP_PROTO(struct task_struct *tsk, s64 runtime, s64 vruntime),
+         TP_ARGS(tsk, runtime, vruntime));
+DEFINE_EVENT(sched_vcpu_runtime000, sched_vcpu_runtime7,
+         TP_PROTO(struct task_struct *tsk, s64 runtime, s64 vruntime),
+         TP_ARGS(tsk, runtime, vruntime));
+DEFINE_EVENT(sched_vcpu_runtime000, sched_vcpu_runtime8,
+         TP_PROTO(struct task_struct *tsk, s64 runtime, s64 vruntime),
+         TP_ARGS(tsk, runtime, vruntime));
+
 
 
 /*tong end*/

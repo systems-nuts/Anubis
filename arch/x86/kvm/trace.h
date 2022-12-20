@@ -1599,6 +1599,24 @@ TRACE_EVENT(kvm_irq_time_get,
         TP_printk("%llx vcpu %d kvm %d", __entry->ktime, __entry->vcpu, __entry->kvm_pid)
 );
 
+TRACE_EVENT(kvm_irq_id_get,
+            TP_PROTO( int vcpu, int kvm_pid),
+            TP_ARGS(vcpu, kvm_pid),
+
+        TP_STRUCT__entry(
+        __field(    int, vcpu   )
+        __field(    int, kvm_pid    )
+        ),
+
+        TP_fast_assign(
+        __entry->vcpu = vcpu;
+        __entry->kvm_pid = kvm_pid;
+        ),
+
+        TP_printk("id %d base2 %d",  __entry->vcpu, __entry->kvm_pid)
+);
+
+
 TRACE_EVENT(kvm_ipi_time_get,
             TP_PROTO(__u64 ktime, int svcpu,int dvcpu, int kvm_pid),
             TP_ARGS(ktime, svcpu, dvcpu, kvm_pid),

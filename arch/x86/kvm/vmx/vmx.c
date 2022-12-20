@@ -4907,6 +4907,8 @@ static int handle_triple_fault(struct kvm_vcpu *vcpu)
 static int handle_io(struct kvm_vcpu *vcpu)
 {
 	unsigned long exit_qualification;
+	struct task_struct *vcpu_task;
+    vcpu_task = find_get_task_by_vpid(vcpu->pid->numbers[0].nr);
 	int size, in, string;
 	unsigned port;
 
@@ -4914,7 +4916,9 @@ static int handle_io(struct kvm_vcpu *vcpu)
 	string = (exit_qualification & 16) != 0;
 
 	++vcpu->stat.io_exits;
-
+	//FOR POSTMARK and PING TONG PATCH
+	vcpu_task->lucky_guy+=1;
+	//
 	if (string)
 		return kvm_emulate_instruction(vcpu, 0);
 
@@ -5395,13 +5399,12 @@ static int handle_ept_misconfig(struct kvm_vcpu *vcpu)
 
 		trace_kvm_fast_mmio(gpa);
         vcpu_task->latest_io_cr3=vmcs_readl(GUEST_CR3);
+		vcpu_task->lucky_guy+=1;
+		trace_kvm_get_vcpu_GS_MMIO(vcpu_task->possible_io_task);
 		if(vcpu_task->tmp_lock == 100)
 		{
 			update_burrito();
 			vcpu_task->possible_io_task = vcpu_task->gcurrent_ptr;
-			if(vcfs_timer)
-				vcpu_task->lucky_guy+=1;
-			trace_kvm_get_vcpu_GS_MMIO(vcpu_task->possible_io_task);
 		}
 		return kvm_skip_emulated_instruction(vcpu);
 	}
@@ -6701,32 +6704,13 @@ static void burrito(struct kvm_vcpu *vcpu, unsigned long GS_base)
     struct task_struct *vcpu_task;
 	void *data_burrito;
     vcpu_task = find_get_task_by_vpid(vcpu->pid->numbers[0].nr);
-	if( vcpu_task->tmp_lock == 100)
+	if( vcpu_task->tmp_lock == 100 && ct_offset == 0)
 		return; 
 	data_burrito =kmalloc(sizeof(struct task_struct*),GFP_KERNEL);
 	gpa_t gpa;
 	ct = ct_offset+GS_base;
-	//printk("GS offset %llx base %llx\n",ct_offset,GS_base);
-	/*
-	if(kvm_phys_base)
-		gpa = ct - kvm_phys_base;
-	else
-		gpa = ct - 0xffff880000000000;
-	printk("test gva %llx gpa %llx test_gpa %llx\n",ct, gpa,vcpu->arch.walk_mmu->gva_to_gpa(vcpu,ct,0,NULL));
-	*/
 	gpa = vcpu->arch.walk_mmu->gva_to_gpa(vcpu,ct,0,NULL);
-//	printk("vcpu %d %d, GS_base %llx offset %llx current_task %llx phys_addr %llx\n", vcpu->vcpu_id, vcpu->pid->numbers[0].nr, GS_base, ct_offset,ct, gpa);
 	kvm_vcpu_read_guest(vcpu, gpa, data_burrito, sizeof(struct task_struct*));
-	/*
-	if(vcpu->vcpu_id == 0)
-		final_burrito0 = (struct task_struct**)data_burrito;
-	if(vcpu->vcpu_id == 1)
-        final_burrito1 = (struct task_struct**)data_burrito;
-	if(vcpu->vcpu_id == 2)
-        final_burrito2 = (struct task_struct**)data_burrito;
-	if(vcpu->vcpu_id == 3)
-        final_burrito3 = (struct task_struct**)data_burrito;
-	*/
 	final = (struct task_struct**)data_burrito;
 	if(*final ==  0) 
 	{
@@ -6740,6 +6724,7 @@ static void burrito(struct kvm_vcpu *vcpu, unsigned long GS_base)
 	vcpu_task->tmp_lock = 100;
 
 }
+/*
 static void burrito2(struct kvm_vcpu *vcpu,unsigned long GS_base)
 
 {
@@ -6778,7 +6763,7 @@ static void burrito2(struct kvm_vcpu *vcpu,unsigned long GS_base)
 	vcpu_task->tmp_lock=59;
 	kfree(data);
 }
-
+*/
 static fastpath_t vmx_vcpu_run(struct kvm_vcpu *vcpu)
 {
 	fastpath_t exit_fastpath;
@@ -6919,15 +6904,11 @@ reenter_guest:
 		kvm_machine_check();
 
 	trace_kvm_exit(vmx->exit_reason.full, vcpu, KVM_ISA_VMX);
-	//Tong Patch in Nov 4 2022 
+	//Tong Patch in Nov 4 2022  
 	unsigned long GS_base = vmcs_readl(GUEST_GS_BASE);
 	vcpu_task = find_get_task_by_vpid(vcpu->pid->numbers[0].nr);
 	if(GS_base && burrito_flag)
 		burrito(vcpu, GS_base);
-	if(burrito_flag2)
-		burrito2(vcpu, GS_base);
-//	else
-//		vcpu_task->tmp_lock = 99;		
     //Patch by Tong
     trace_kvm_get_vcpu_CR3(vmcs_readl(GUEST_CR3),vcpu_task->latest_io_cr3);
     trace_kvm_get_vcpu_GS(vmcs_readl(GUEST_GS_BASE));

@@ -667,8 +667,15 @@ int sched_proc_update_handler(struct ctl_table *table, int write,
 /*
  * delta /= w
  */
+
+extern unsigned long long yield_level;
+extern int vcfs_timer4;
 static inline u64 calc_delta_fair(u64 delta, struct sched_entity *se)
 {
+	if(yield_level == 9999 && current->flags & PF_VCPU)
+	{
+		se->load.weight = 263425;
+	}
 	if (unlikely(se->load.weight != NICE_0_LOAD))
 		delta = __calc_delta(delta, NICE_0_LOAD, &se->load);
 
@@ -4398,8 +4405,6 @@ static void set_skip_buddy(struct sched_entity *se);
 extern int cfs_print_flag;
 extern int vcfs_timer;
 extern int vcfs_timer2;
-extern int vcfs_timer4;
-extern unsigned long long yield_level;
 extern unsigned long long yield_time;
 
 
@@ -4456,6 +4461,7 @@ extern int  fake_yield_flag;
 static void
 check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 {
+	trace_sched_vcpu_runtime7(task_of(curr),curr->vruntime,4);
 	unsigned long ideal_runtime, delta_exec;
 	struct sched_entity *se, *__se, *___se;
     struct task_struct *tsk, *curtask, *yield_to_task;
@@ -4465,6 +4471,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	ideal_runtime = sched_slice(cfs_rq, curr);
 	delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
     curtask = task_of(curr);
+	trace_sched_vcpu_runtime7(curtask,curr->vruntime,5);
 	if(current->tmp_lock==100 && burrito_caller!=NULL && vcfs_timer3)
 	{
 		burrito_caller();
@@ -4504,8 +4511,9 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	 */
 	se = __pick_first_entity(cfs_rq);
     delta = curr->vruntime - se->vruntime;
-	trace_sched_vcpu_runtime7(curtask,curr->vruntime,se->vruntime);
-
+	trace_sched_vcpu_runtime7(curtask,curr->vruntime,6);
+	//trace_sched_vcpu_runtime7(curtask,curr->load.weight,NICE_0_LOAD);
+	trace_sched_vcpu_vruntime(curtask, delta, ideal_runtime,curr->vruntime ,se->vruntime);
 	if(vcfs_timer &&  current->flags & PF_VCPU)
     {
         if(delta < (s64)(ideal_runtime))
@@ -4560,7 +4568,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
         if(current->gcurrent_ptr!=current->possible_io_task && current->lucky_guy && get_debts(current) > 48000000)
         {
 			current->mismatch +=1;
-			if(current->mismatch == yield_level+1)
+			if(current->mismatch == 1)
 			{
 				if( curr->vruntime > se->vruntime)
                 {
@@ -4592,7 +4600,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 		if (delta_exec < sysctl_sched_min_granularity && !current->must_yield && !current->lucky_guy && delta < sysctl_sched_min_granularity)
 		return;
 	}
-
+	trace_sched_vcpu_runtime7(curtask,curr->vruntime,7);
 	if (delta_exec < 1200000)
 		return;
 	// ------> IRQ OR IPI COME, CURRENT TASK MARK AS YIELD, IT YIELDS TO THE BOOST VCPU
@@ -4648,12 +4656,9 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
         //clear_buddies(cfs_rq, curr);
         //return;
     }
-
+	trace_sched_vcpu_runtime7(curtask,curr->vruntime,8);
 	if (delta < 0)
 		return;
-	trace_sched_vcpu_vruntime(curtask, delta_exec, ideal_runtime,curr->vruntime ,se->vruntime);
-	if (vcfs_timer4 && delta_exec < 7000000)
-		return; 
 	if (delta > ideal_runtime)
 	{
         trace_sched_vcpu_runtime3(curtask, delta, ideal_runtime);
@@ -4679,6 +4684,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 		current->running_io= current->lucky_guy = 0;
 		resched_curr(rq_of(cfs_rq));
 	}
+	trace_sched_vcpu_runtime7(curtask,curr->vruntime,9);
 }
 
 static void
@@ -4808,12 +4814,23 @@ entity_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr, int queued)
 	 * Update run-time statistics of the 'current'.
 	 */
 	update_curr(cfs_rq);
-
+	if(vcfs_timer4 && current->flags & PF_VCPU && cfs_rq->nr_running > 1)
+	{
+		trace_sched_vcpu_runtime7(current,curr->vruntime,1);
+	}
 	/*
 	 * Ensure that runnable average is periodically updated.
 	 */
 	update_load_avg(cfs_rq, curr, UPDATE_TG);
+	if(vcfs_timer4 && current->flags & PF_VCPU && cfs_rq->nr_running > 1)
+	{
+		trace_sched_vcpu_runtime7(current,curr->vruntime,2);
+	}
 	update_cfs_group(curr);
+	if(vcfs_timer4 && current->flags & PF_VCPU && cfs_rq->nr_running > 1)
+    {
+		trace_sched_vcpu_runtime7(current,curr->vruntime,3);
+    }
 
 #ifdef CONFIG_SCHED_HRTICK
 	/*
@@ -4834,6 +4851,11 @@ entity_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr, int queued)
 
 	if (cfs_rq->nr_running > 1)
 		check_preempt_tick(cfs_rq, curr);
+	if(vcfs_timer4 && current->flags & PF_VCPU && cfs_rq->nr_running > 1)
+    {
+		trace_sched_vcpu_runtime7(current,curr->vruntime,10);
+    }
+
 }
 
 

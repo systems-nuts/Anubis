@@ -505,6 +505,9 @@ struct kvm {
 	struct srcu_struct irq_srcu;
 	pid_t userspace_pid;
 	unsigned int max_halt_poll_ns;
+//PATCH TONG FOR BOOSTING
+	signed long long debts; 
+	int debts_sync; 
 };
 
 #define kvm_err(fmt, ...) \
