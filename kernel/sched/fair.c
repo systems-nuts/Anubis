@@ -4464,14 +4464,13 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	trace_sched_vcpu_runtime7(task_of(curr),curr->vruntime,4);
 	unsigned long ideal_runtime, delta_exec;
 	struct sched_entity *se, *__se, *___se;
-    struct task_struct *tsk, *curtask, *yield_to_task;
+    struct task_struct *tsk, *curtask, *yield_to_task, *__task;
 	int skip_time, own_time;
 	signed long long compensate; //debts that paied
 	s64 delta;
 	ideal_runtime = sched_slice(cfs_rq, curr);
 	delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
     curtask = task_of(curr);
-	trace_sched_vcpu_runtime7(curtask,curr->vruntime,5);
 	if(current->tmp_lock==100 && burrito_caller!=NULL && vcfs_timer3)
 	{
 		burrito_caller();
@@ -4486,21 +4485,19 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	// ------ > MAXIMAL TIME SLICE, IT SHOULD BE DESCHEDULE ONCE IT GETS IN HERE. 
 	if (delta_exec > ideal_runtime) {
         //If passed to here, which means I used all of my lucky already
-        trace_sched_vcpu_runtime2(curtask, delta_exec, ideal_runtime);
-		current->mismatch = 0;
+  //      trace_sched_vcpu_runtime2(curtask, delta_exec, ideal_runtime);
+		if(vcfs_timer3)
+			current->mismatch = 0;
 		resched_curr(rq_of(cfs_rq));
 
 		/*
 		 * The current task ran long enough, ensure it doesn't get
 		 * re-elected due to buddy favours.
 		 */
-        if(!current->lucky_guy || fake_yield_flag)
-		    clear_buddies(cfs_rq, curr);
         if(current->lucky_guy)
-        {
 			current->running_io= current->lucky_guy = 0;
-        }
-	
+		else
+			clear_buddies(cfs_rq, curr);
 		return;
 	}
 
@@ -4511,8 +4508,6 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	 */
 	se = __pick_first_entity(cfs_rq);
     delta = curr->vruntime - se->vruntime;
-	trace_sched_vcpu_runtime7(curtask,curr->vruntime,6);
-	//trace_sched_vcpu_runtime7(curtask,curr->load.weight,NICE_0_LOAD);
 	trace_sched_vcpu_vruntime(curtask, delta, ideal_runtime,curr->vruntime ,se->vruntime);
 	if(vcfs_timer &&  current->flags & PF_VCPU)
     {
@@ -4520,7 +4515,12 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
         {
             if((!current->lucky_guy && !current->must_yield))
             {
-                if(get_debts(current) > 24000000 && (get_debts(current) <= 500000000))
+				//boost_heap, if I used to be IO vCPU, I should have chance to take a break
+				//so if I don't run IO for a short time, it doesn't mean I'm not IO anymore
+				current->boost_heap = current->boost_heap >> 1;
+				if(current->boost_heap <= yield_level)
+				{
+                if(get_debts(current) > 24000000 && (get_debts(current) <= 400000000))
                 {
 
 		            if( curr->vruntime > se->vruntime)
@@ -4535,31 +4535,44 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 					curr->vruntime = se->vruntime + compensate;
 					delta = curr->vruntime - se->vruntime;
 				}
-				else if (get_debts(current) > 500000000) // extremly unfair
+				else if (get_debts(current) > 400000000) // extremly unfair
 				{
+					//UPDATE April19 2023
+					//For high overcommit rate, the non-IO vCPU should yield more
+                    skip_time=0;
+
+                    ___se=se;
+                    while(___se!=NULL)
+                    {
+                        ___se=__pick_next_entity(___se);
+                        skip_time++;
+                    }
 					if( curr->vruntime > se->vruntime)
                     {
-                        compensate = update_debts(current,0,2*ideal_runtime-delta);
+                        compensate = update_debts(current,0,2*skip_time*ideal_runtime-delta);
                     }
                     else
                     {
-                        compensate = update_debts(current,0,2*ideal_runtime);
+                        compensate = update_debts(current,0,2*skip_time*ideal_runtime);
                     }
-                    trace_sched_vcpu_runtime6(curtask, delta, get_debts(current));
-                    curr->vruntime = se->vruntime + compensate;
+                    trace_sched_vcpu_runtime6(curtask, skip_time, get_debts(current));
+					if(vcfs_timer4)
+						curr->vruntime = se->vruntime + 4*compensate;
+					else
+						curr->vruntime = se->vruntime + 2*compensate;
                     delta = curr->vruntime - se->vruntime;
-
+				}
 				}
 				else
-				{
-					trace_sched_vcpu_runtime6(curtask, 666, get_debts(current));
+					trace_sched_vcpu_runtime6(curtask,111, get_debts(current));
+			}
+			else
+			{
+				trace_sched_vcpu_runtime6(curtask, 666, get_debts(current));
 
-				}
-            }
-
+			}
         }
     }
-
 
     if(vcfs_timer3 && current->tmp_lock==100) //protocol: A Lannister Always Pays His Debts
 	{
@@ -4601,7 +4614,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 		return;
 	}
 	trace_sched_vcpu_runtime7(curtask,curr->vruntime,7);
-	if (delta_exec < 1200000)
+	if (delta < 1200000)
 		return;
 	// ------> IRQ OR IPI COME, CURRENT TASK MARK AS YIELD, IT YIELDS TO THE BOOST VCPU
     if(current->must_yield && !fake_yield_flag)
@@ -4618,7 +4631,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 			else
 			{
 				update_debts(current->yield_to,ideal_runtime,0);
-				update_debts(current,0,ideal_runtime+(se->vruntime- curr->vruntime));
+				update_debts(current,0,ideal_runtime);
 			}
         }
 
@@ -4631,6 +4644,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
             current->running_io= current->lucky_guy = 0;
 		
 		current->yield_to->lucky_guy += 1;
+		current->yield_to->boost_heap += 1;
 		if (se != &current->yield_to->se)
 		{
 			skip_time=0;
@@ -4641,6 +4655,12 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 				{
 					___se=__pick_next_entity(___se);
 					skip_time++;
+					if(entity_is_task(___se))
+					{
+						__task = task_of(___se);
+						update_debts(__task,0,ideal_runtime);
+						___se->vruntime += ideal_runtime;
+					}
 				}
 				else
 				{
@@ -4648,13 +4668,9 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 				}
 			}
 			update_debts(current->yield_to,ideal_runtime*skip_time,0);
-//			set_skip_buddy(se);
 			set_next_buddy(&current->yield_to->se);
 		}
         trace_sched_vcpu_runtime(curtask, delta_exec, ideal_runtime);
-        //resched_curr(rq_of(cfs_rq));
-        //clear_buddies(cfs_rq, curr);
-        //return;
     }
 	trace_sched_vcpu_runtime7(curtask,curr->vruntime,8);
 	if (delta < 0)
@@ -4667,7 +4683,10 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
         if(current->lucky_guy && current->tmp_lock==100  && !fake_yield_flag)
         {
 			if(curr->vruntime > se->vruntime + ideal_runtime)
+			{
+				update_debts(current,curr->vruntime-(se->vruntime + ideal_runtime + 100000),0);
 	            curr->vruntime = se->vruntime + ideal_runtime + 100000;
+			}
 
 			// IF THERE IS IO INDICATOR COME DURING THIS TICK IT KEEP BOOST
 			if(current->lucky_guy > current->running_io)
@@ -4814,23 +4833,12 @@ entity_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr, int queued)
 	 * Update run-time statistics of the 'current'.
 	 */
 	update_curr(cfs_rq);
-	if(vcfs_timer4 && current->flags & PF_VCPU && cfs_rq->nr_running > 1)
-	{
-		trace_sched_vcpu_runtime7(current,curr->vruntime,1);
-	}
+	
 	/*
 	 * Ensure that runnable average is periodically updated.
 	 */
 	update_load_avg(cfs_rq, curr, UPDATE_TG);
-	if(vcfs_timer4 && current->flags & PF_VCPU && cfs_rq->nr_running > 1)
-	{
-		trace_sched_vcpu_runtime7(current,curr->vruntime,2);
-	}
 	update_cfs_group(curr);
-	if(vcfs_timer4 && current->flags & PF_VCPU && cfs_rq->nr_running > 1)
-    {
-		trace_sched_vcpu_runtime7(current,curr->vruntime,3);
-    }
 
 #ifdef CONFIG_SCHED_HRTICK
 	/*
@@ -4851,10 +4859,6 @@ entity_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr, int queued)
 
 	if (cfs_rq->nr_running > 1)
 		check_preempt_tick(cfs_rq, curr);
-	if(vcfs_timer4 && current->flags & PF_VCPU && cfs_rq->nr_running > 1)
-    {
-		trace_sched_vcpu_runtime7(current,curr->vruntime,10);
-    }
 
 }
 
