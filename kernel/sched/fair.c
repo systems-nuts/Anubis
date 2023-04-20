@@ -4585,11 +4585,13 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 			{
 				if( curr->vruntime > se->vruntime)
                 {
-                    update_debts(current,0,ideal_runtime-delta);
+					if(vcfs_timer)
+	                    update_debts(current,0,ideal_runtime-delta);
                 }
                 else
                 {
-                    update_debts(current,0,ideal_runtime);
+					if(vcfs_timer)
+	                    update_debts(current,0,ideal_runtime);
                 }
 				curr->vruntime = se->vruntime + ideal_runtime+1;
 				//current->running_io= current->lucky_guy = 0;
@@ -4651,23 +4653,17 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 			___se=se;
 			while(___se!=NULL)
 			{
-				if(se != &current->yield_to->se)
+				if(___se != &current->yield_to->se)
 				{
-					___se=__pick_next_entity(___se);
 					skip_time++;
-					if(entity_is_task(___se))
-					{
-						__task = task_of(___se);
-						update_debts(__task,0,ideal_runtime);
-						___se->vruntime += ideal_runtime;
-					}
 				}
 				else
 				{
 					break;
 				}
 			}
-			update_debts(current->yield_to,ideal_runtime*skip_time,0);
+			if(vcfs_timer)
+				update_debts(current->yield_to,ideal_runtime*skip_time,0);
 			set_next_buddy(&current->yield_to->se);
 		}
         trace_sched_vcpu_runtime(curtask, delta_exec, ideal_runtime);
@@ -4684,7 +4680,8 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
         {
 			if(curr->vruntime > se->vruntime + ideal_runtime)
 			{
-				update_debts(current,curr->vruntime-(se->vruntime + ideal_runtime + 100000),0);
+				if(vcfs_timer)
+					update_debts(current,curr->vruntime-(se->vruntime + ideal_runtime + 100000),0);
 	            curr->vruntime = se->vruntime + ideal_runtime + 100000;
 			}
 

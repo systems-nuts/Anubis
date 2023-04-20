@@ -232,7 +232,10 @@ void boost_IO_vcpu(struct kvm *kvm, int vcpu_pid, int dest_id)
 	if(!sched_check_task_is_running(IO_vcpu))
 		sched_force_schedule(IO_vcpu,1);
     else
+	{
+		IO_vcpu->boost_heap+=1;
         IO_vcpu->lucky_guy+=1; //if I have a IPI, I will get more time
+	}
 
 }
 EXPORT_SYMBOL(boost_IO_vcpu);
@@ -275,7 +278,10 @@ void boost_IRQ_vcpu(int vcpu_pid)
     else
 	{
 		if(vcfs_timer2)
+		{
 	        IRQ_vcpu->lucky_guy+=1;
+			IRQ_vcpu->boost_heap+=1;
+		}
 	}
 	//if vcpu_io is running. curr->sum_exec_runtime = curr->prev_sum_exec_runtime;
 	//else

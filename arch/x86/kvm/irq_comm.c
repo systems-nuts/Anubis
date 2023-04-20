@@ -190,8 +190,8 @@ int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
 		}
 		if(IRQ_redirect_onlyredirect)
 		{
-			if(irq.dest_id > (1 << (kvm->created_vcpus-1)))
-				irq.dest_id = 1;
+			//if(irq.dest_id > (1 << (kvm->created_vcpus-1)))
+			//	irq.dest_id = (1 << (kvm->created_vcpus-1));
 			dest=kvm_vcpu_young(kvm,irq.dest_id);
 			if(dest)
 				irq.dest_id = dest;

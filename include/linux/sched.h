@@ -1365,6 +1365,7 @@ struct task_struct {
     ktime_t               event_fd_time;
     int                 lucky_guy;
     int                 running_io; //indicate currunt running IO or not
+	int					boost_heap;
     __u64               latest_io_cr3; // the latest vcpu cr3 did MMIO
     __u64               lannisters_debts; //the debts IO vcpu should pay
 	int 				fake_yield;
