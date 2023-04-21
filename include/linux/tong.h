@@ -119,9 +119,9 @@ static int check_debts(struct task_struct *task)
 	if(ret)
 		return 0;
 	rcu_read_lock();
-	spin_lock_irq(&debts_lock);
+	//spin_lock_irq(&debts_lock);
 	debts = my_kvm->debts;
-	spin_unlock_irq(&debts_lock);
+	//spin_unlock_irq(&debts_lock);
 	rcu_read_unlock();
 	if(debts > 5000000000)
 		debts = 5000000000; 
@@ -144,7 +144,7 @@ static signed long long update_debts(struct task_struct *task, signed long long 
     if(ret)
         return 0;
 	rcu_read_lock();
-	spin_lock_irq(&debts_lock);
+	//spin_lock_irq(&debts_lock);
 	my_kvm->debts += debts;
 	if(my_kvm->debts >  money)
 	{
@@ -156,7 +156,7 @@ static signed long long update_debts(struct task_struct *task, signed long long 
 		value = my_kvm->debts;
 		my_kvm->debts =0;
 	}
-	spin_unlock_irq(&debts_lock);
+	//spin_unlock_irq(&debts_lock);
 	rcu_read_unlock();
 
 	return value;
@@ -171,9 +171,9 @@ static signed long long get_debts(struct task_struct *task)
 	if(ret)
         return 0;
 	rcu_read_lock();
-	spin_lock_irq(&debts_lock);
+	//spin_lock_irq(&debts_lock);
     debts = my_kvm->debts;
-	spin_unlock_irq(&debts_lock);
+	//spin_unlock_irq(&debts_lock);
 	rcu_read_unlock();
 	return debts;
 }

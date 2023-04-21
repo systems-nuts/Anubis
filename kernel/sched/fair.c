@@ -4461,7 +4461,7 @@ extern int  fake_yield_flag;
 static void
 check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 {
-	trace_sched_vcpu_runtime7(task_of(curr),curr->vruntime,4);
+//	trace_sched_vcpu_runtime7(task_of(curr),curr->vruntime,4);
 	unsigned long ideal_runtime, delta_exec;
 	struct sched_entity *se, *__se, *___se;
     struct task_struct *tsk, *curtask, *yield_to_task, *__task;
@@ -4483,6 +4483,8 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
     //We shouldn't re-boost it again in this check. Otherwise it creates stravation
 	
 	// ------ > MAXIMAL TIME SLICE, IT SHOULD BE DESCHEDULE ONCE IT GETS IN HERE. 
+	if (current->lucky_guy > current->running_io) // increase confidence 
+		current->boost_heap++;
 	if (delta_exec > ideal_runtime) {
         //If passed to here, which means I used all of my lucky already
   //      trace_sched_vcpu_runtime2(curtask, delta_exec, ideal_runtime);
@@ -4508,12 +4510,20 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	 */
 	se = __pick_first_entity(cfs_rq);
     delta = curr->vruntime - se->vruntime;
-	trace_sched_vcpu_vruntime(curtask, delta, ideal_runtime,curr->vruntime ,se->vruntime);
+//	trace_sched_vcpu_vruntime(curtask, delta, ideal_runtime,curr->vruntime ,se->vruntime);
+//TODO April 21
+//How we yield? we need find a dynamic way to adjust the yield rate
+//Not too much, not too slow. 
+//First, we identify where we creat debts 1. other yield 2. we prolong the run time 
+//This should be dynamic adjust. but with a maximal interval. 
+//other yield :maximul overcommit rate * ideal_time
+//prolong : one tick per time 
+//We need very good implementation here. 
 	if(vcfs_timer &&  current->flags & PF_VCPU)
     {
         if(delta < (s64)(ideal_runtime))
         {
-            if((!current->lucky_guy && !current->must_yield))
+            if(((current->lucky_guy <= current->running_io )&& !current->must_yield))
             {
 				//boost_heap, if I used to be IO vCPU, I should have chance to take a break
 				//so if I don't run IO for a short time, it doesn't mean I'm not IO anymore
@@ -4547,19 +4557,13 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
                         ___se=__pick_next_entity(___se);
                         skip_time++;
                     }
-					if( curr->vruntime > se->vruntime)
-                    {
-                        compensate = update_debts(current,0,2*skip_time*ideal_runtime-delta);
-                    }
-                    else
-                    {
-                        compensate = update_debts(current,0,2*skip_time*ideal_runtime);
-                    }
-                    trace_sched_vcpu_runtime6(curtask, skip_time, get_debts(current));
 					if(vcfs_timer4)
-						curr->vruntime = se->vruntime + 4*compensate;
+	                    compensate = update_debts(current,0,(yield_level-current->boost_heap)*ideal_runtime);
 					else
-						curr->vruntime = se->vruntime + 2*compensate;
+						compensate = update_debts(current,0,skip_time*ideal_runtime);
+
+                    trace_sched_vcpu_runtime6(curtask, skip_time, get_debts(current));
+					curr->vruntime = se->vruntime + compensate;
                     delta = curr->vruntime - se->vruntime;
 				}
 				}
@@ -4594,7 +4598,6 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	                    update_debts(current,0,ideal_runtime);
                 }
 				curr->vruntime = se->vruntime + ideal_runtime+1;
-				//current->running_io= current->lucky_guy = 0;
 				delta = curr->vruntime - se->vruntime;
 				trace_sched_vcpu_runtime4(curtask, delta, ideal_runtime);
 			}
@@ -4616,8 +4619,8 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 		return;
 	}
 	trace_sched_vcpu_runtime7(curtask,curr->vruntime,7);
-	if (delta < 1200000)
-		return;
+	//if (delta < 1200000)
+	//	return;
 	// ------> IRQ OR IPI COME, CURRENT TASK MARK AS YIELD, IT YIELDS TO THE BOOST VCPU
     if(current->must_yield && !fake_yield_flag)
     {
@@ -4646,7 +4649,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
             current->running_io= current->lucky_guy = 0;
 		
 		current->yield_to->lucky_guy += 1;
-		current->yield_to->boost_heap += 1;
+//		current->yield_to->boost_heap += 1;
 		if (se != &current->yield_to->se)
 		{
 			skip_time=0;
@@ -4655,6 +4658,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 			{
 				if(___se != &current->yield_to->se)
 				{
+					___se=__pick_next_entity(___se);
 					skip_time++;
 				}
 				else
