@@ -4530,25 +4530,6 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 				current->boost_heap = current->boost_heap >> 1;
 				if(current->boost_heap <= yield_level)
 				{
-                if(get_debts(current) > 24000000 && (get_debts(current) <= 400000000))
-                {
-
-		            if( curr->vruntime > se->vruntime)
-			        {
-		                compensate = update_debts(current,0,ideal_runtime-delta);
-				    }
-		            else
-				    {
-				        compensate = update_debts(current,0,ideal_runtime);
-		            }
-					trace_sched_vcpu_runtime6(curtask, delta, get_debts(current));
-					curr->vruntime = se->vruntime + compensate;
-					delta = curr->vruntime - se->vruntime;
-				}
-				else if (get_debts(current) > 400000000) // extremly unfair
-				{
-					//UPDATE April19 2023
-					//For high overcommit rate, the non-IO vCPU should yield more
                     skip_time=0;
 
                     ___se=se;
@@ -4557,23 +4538,34 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
                         ___se=__pick_next_entity(___se);
                         skip_time++;
                     }
-					if(vcfs_timer4)
-	                    compensate = update_debts(current,0,(yield_level-current->boost_heap)*ideal_runtime);
-					else
-						compensate = update_debts(current,0,skip_time*ideal_runtime);
 
-                    trace_sched_vcpu_runtime6(curtask, skip_time, get_debts(current));
-					curr->vruntime = se->vruntime + compensate;
-                    delta = curr->vruntime - se->vruntime;
-				}
+	                if(get_debts(current) > 24000000 && (get_debts(current) <= 400000000))
+		            {
+				        compensate = update_debts(current,0,skip_time*ideal_runtime);
+						trace_sched_vcpu_runtime6(curtask, 123, get_debts(current));
+						curr->vruntime = se->vruntime + compensate;
+						delta = curr->vruntime - se->vruntime;
+					}
+					else if (get_debts(current) > 400000000) // extremly unfair
+					{
+						//UPDATE April19 2023
+						//For high overcommit rate, the non-IO vCPU should yield more
+						if(vcfs_timer4)
+							compensate = update_debts(current,0,4*skip_time*ideal_runtime);
+						else
+							compensate = update_debts(current,0,2*skip_time*ideal_runtime);
+
+						trace_sched_vcpu_runtime6(curtask, 555, current->boost_heap);
+						curr->vruntime = se->vruntime + compensate;
+						delta = curr->vruntime - se->vruntime;
+					}
 				}
 				else
-					trace_sched_vcpu_runtime6(curtask,111, get_debts(current));
+					trace_sched_vcpu_runtime6(curtask,111, current->boost_heap);
 			}
 			else
 			{
 				trace_sched_vcpu_runtime6(curtask, 666, get_debts(current));
-
 			}
         }
     }
@@ -4630,12 +4622,10 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
         {
 			if( curr->vruntime > se->vruntime)
 			{
-				update_debts(current->yield_to,ideal_runtime-delta,0);
 				update_debts(current,0,ideal_runtime-delta);
 			}
 			else
 			{
-				update_debts(current->yield_to,ideal_runtime,0);
 				update_debts(current,0,ideal_runtime);
 			}
         }
