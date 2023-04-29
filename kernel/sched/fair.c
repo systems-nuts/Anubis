@@ -4405,7 +4405,6 @@ static void set_skip_buddy(struct sched_entity *se);
 extern int cfs_print_flag;
 extern int vcfs_timer;
 extern int vcfs_timer2;
-extern unsigned long long yield_time;
 
 
 //TODO  OCT 3 2022 Tong at home: also count the time if it reschedule natually. 
@@ -4471,20 +4470,22 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	ideal_runtime = sched_slice(cfs_rq, curr);
 	delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
     curtask = task_of(curr);
+	int io_vcpu_mark = 0;
+	int possible_io =0;
 	if(current->tmp_lock==100 && burrito_caller!=NULL && vcfs_timer3)
 	{
 		burrito_caller();
 		trace_sched_task_current(current->pid,current->gcurrent_ptr,current->possible_io_task); 
 	}
-//	if(current->flags & PF_VCPU && vcfs_timer)
-//		trace_sched_vcpu_runtime7(curtask, delta_exec, get_debts(current));		
-
     //This is a tricky one, we should just let boost vcpu deschedule after it enjoy it time
     //We shouldn't re-boost it again in this check. Otherwise it creates stravation
 	
 	// ------ > MAXIMAL TIME SLICE, IT SHOULD BE DESCHEDULE ONCE IT GETS IN HERE. 
-	if (current->lucky_guy > current->running_io) // increase confidence 
-		current->boost_heap++;
+	if (current->lucky_guy > current->running_io) // Previous tick is doing IO
+	{
+		current->boost_heap++; //increase confidence 
+		io_vcpu_mark = 1;
+	} 
 	if (delta_exec > ideal_runtime) {
         //If passed to here, which means I used all of my lucky already
   //      trace_sched_vcpu_runtime2(curtask, delta_exec, ideal_runtime);
@@ -4496,9 +4497,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 		 * The current task ran long enough, ensure it doesn't get
 		 * re-elected due to buddy favours.
 		 */
-        if(current->lucky_guy)
-			current->running_io= current->lucky_guy = 0;
-		else
+        if(!io_vcpu_mark)
 			clear_buddies(cfs_rq, curr);
 		return;
 	}
@@ -4510,6 +4509,26 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	 */
 	se = __pick_first_entity(cfs_rq);
     delta = curr->vruntime - se->vruntime;
+
+    if(vcfs_timer3 && current->tmp_lock==100) //protocol: A Lannister Always Pays His Debts
+    {
+        // ------> POLICY 2 
+        // ------> MISMATCH, WE MARK IT AS POSSIBLE NOT IO VCPU
+        if(current->gcurrent_ptr!=current->possible_io_task && get_debts(current) > 48000000)
+        {
+			possible_io=0;
+//            trace_sched_vcpu_runtime4(curtask, delta, ideal_runtime);
+        }
+        // ------> MATCH, WE MARK IT AS POSSIBLE IO
+        else
+        {
+			if(current->boost_heap)
+				possible_io=1;
+//            trace_sched_vcpu_runtime5(curtask, delta, ideal_runtime);
+        }
+    }
+
+
 //	trace_sched_vcpu_vruntime(curtask, delta, ideal_runtime,curr->vruntime ,se->vruntime);
 //TODO April 21
 //How we yield? we need find a dynamic way to adjust the yield rate
@@ -4521,9 +4540,10 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 //We need very good implementation here. 
 	if(vcfs_timer &&  current->flags & PF_VCPU)
     {
+		trace_sched_vcpu_runtime4(curtask, 0, get_debts(current));
         if(delta < (s64)(ideal_runtime))
         {
-            if(((current->lucky_guy <= current->running_io )&& !current->must_yield))
+            if(((!io_vcpu_mark)&& !current->must_yield))
             {
 				//boost_heap, if I used to be IO vCPU, I should have chance to take a break
 				//so if I don't run IO for a short time, it doesn't mean I'm not IO anymore
@@ -4539,24 +4559,23 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
                         skip_time++;
                     }
 
-	                if(get_debts(current) > 24000000 && (get_debts(current) <= 400000000))
+	                if(possible_io)
 		            {
-				        compensate = update_debts(current,0,skip_time*ideal_runtime);
+				        compensate = update_debts(current,0,ideal_runtime);
 						trace_sched_vcpu_runtime6(curtask, 123, get_debts(current));
-						curr->vruntime = se->vruntime + compensate;
+						curr->vruntime +=  compensate;
 						delta = curr->vruntime - se->vruntime;
 					}
-					else if (get_debts(current) > 400000000) // extremly unfair
+					else
 					{
 						//UPDATE April19 2023
 						//For high overcommit rate, the non-IO vCPU should yield more
 						if(vcfs_timer4)
-							compensate = update_debts(current,0,4*skip_time*ideal_runtime);
-						else
 							compensate = update_debts(current,0,2*skip_time*ideal_runtime);
-
+						else
+							compensate = update_debts(current,0,4*skip_time*ideal_runtime);
 						trace_sched_vcpu_runtime6(curtask, 555, current->boost_heap);
-						curr->vruntime = se->vruntime + compensate;
+						curr->vruntime += compensate;
 						delta = curr->vruntime - se->vruntime;
 					}
 				}
@@ -4570,56 +4589,21 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
         }
     }
 
-    if(vcfs_timer3 && current->tmp_lock==100) //protocol: A Lannister Always Pays His Debts
-	{
-		// ------> POLICY 2	
-		// ------> MISMATCH, WE ADD VRUNTIME TO THE TASK TO MAKE IT DESCHEDULE FASTER
-        if(current->gcurrent_ptr!=current->possible_io_task && current->lucky_guy && get_debts(current) > 48000000)
-        {
-			current->mismatch +=1;
-			if(current->mismatch == 1)
-			{
-				if( curr->vruntime > se->vruntime)
-                {
-					if(vcfs_timer)
-	                    update_debts(current,0,ideal_runtime-delta);
-                }
-                else
-                {
-					if(vcfs_timer)
-	                    update_debts(current,0,ideal_runtime);
-                }
-				curr->vruntime = se->vruntime + ideal_runtime+1;
-				delta = curr->vruntime - se->vruntime;
-				trace_sched_vcpu_runtime4(curtask, delta, ideal_runtime);
-			}
-        }
-		// ------> MATCH, WE DON'T DO ANYTHING
-        else
-        {
-            trace_sched_vcpu_runtime5(curtask, delta, ideal_runtime);
-        }
-	}	
-	if (fake_yield_flag)
-	{
-		if (delta_exec < sysctl_sched_min_granularity)
-			return;
-	}
-	else
-	{
-		if (delta_exec < sysctl_sched_min_granularity && !current->must_yield && !current->lucky_guy && delta < sysctl_sched_min_granularity)
+	if (delta_exec < sysctl_sched_min_granularity && !current->must_yield && io_vcpu_mark && delta < sysctl_sched_min_granularity)
 		return;
-	}
 	trace_sched_vcpu_runtime7(curtask,curr->vruntime,7);
-	//if (delta < 1200000)
-	//	return;
 	// ------> IRQ OR IPI COME, CURRENT TASK MARK AS YIELD, IT YIELDS TO THE BOOST VCPU
-    if(current->must_yield && !fake_yield_flag)
+    if(current->must_yield && (!io_vcpu_mark))
     {
         //For yield, we fake it, to let the CFS think it already run enough time
         //curr->sum_exec_runtime = curr->prev_sum_exec_runtime + ideal_runtime + 1000000;
         if(vcfs_timer)
         {
+            if(!update_debts(current->yield_to,ideal_runtime,0))
+			{
+				goto no_yield;
+			}
+
 			if( curr->vruntime > se->vruntime)
 			{
 				update_debts(current,0,ideal_runtime-delta);
@@ -4635,11 +4619,11 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 
         delta = curr->vruntime - se->vruntime;
         //We set the one to yield as lucky guy, and lucky guy will enjoy higher time slice
-        if(current->lucky_guy)
-            current->running_io= current->lucky_guy = 0;
+        
+		current->running_io= current->lucky_guy = 0;
 		
 		current->yield_to->lucky_guy += 1;
-//		current->yield_to->boost_heap += 1;
+		/*
 		if (se != &current->yield_to->se)
 		{
 			skip_time=0;
@@ -4656,12 +4640,14 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 					break;
 				}
 			}
-			if(vcfs_timer)
-				update_debts(current->yield_to,ideal_runtime*skip_time,0);
-			set_next_buddy(&current->yield_to->se);
 		}
+		*/
+        set_next_buddy(&current->yield_to->se);
         trace_sched_vcpu_runtime(curtask, delta_exec, ideal_runtime);
     }
+//no more boost
+no_yield:
+
 	trace_sched_vcpu_runtime7(curtask,curr->vruntime,8);
 	if (delta < 0)
 		return;
@@ -4670,23 +4656,35 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
         trace_sched_vcpu_runtime3(curtask, delta, ideal_runtime);
 		// ------> POLICY 1: FOR BOOST VCPU, IT WILL BE DEMARKED. BUT GAIN ONE MORE TICK
 
-        if(current->lucky_guy && current->tmp_lock==100  && !fake_yield_flag)
+        if(io_vcpu_mark && current->tmp_lock==100  && !fake_yield_flag)
         {
-			if(curr->vruntime > se->vruntime + ideal_runtime)
+			/*
+			if(curr->vruntime >= se->vruntime + ideal_runtime)
 			{
 				if(vcfs_timer)
-					update_debts(current,curr->vruntime-(se->vruntime + ideal_runtime + 100000),0);
-	            curr->vruntime = se->vruntime + ideal_runtime + 100000;
+					update_debts(current,curr->vruntime - (se->vruntime + ideal_runtime),0);
 			}
-
-			// IF THERE IS IO INDICATOR COME DURING THIS TICK IT KEEP BOOST
-			if(current->lucky_guy > current->running_io)
+			else
 			{
-				current->running_io= current->lucky_guy;
-				curr->vruntime = se->vruntime + ideal_runtime - 1000000;
 				if(vcfs_timer)
-		            update_debts(current,1000000,0);
-
+                    update_debts(current,0,(se->vruntime + ideal_runtime) - curr->vruntime);
+			}
+			*/
+			// IF THERE IS IO INDICATOR COME DURING THIS TICK IT KEEP BOOST
+			current->running_io= current->lucky_guy;
+			if(vcfs_timer)
+			{
+		        compensate = update_debts(current,1200000,0);
+				trace_sched_vcpu_runtime5(curtask, 0, get_debts(current));
+				curr->vruntime = se->vruntime + ideal_runtime - compensate;
+				if(compensate)
+				{
+					return;
+				}
+			}
+			else
+			{
+				curr->vruntime = se->vruntime + ideal_runtime - 1000000;
 				return; 
 			}
         }
