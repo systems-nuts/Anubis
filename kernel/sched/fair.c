@@ -4457,6 +4457,7 @@ extern int vcfs_timer2;
 //If a vCPU task realize it has debts but not getting boost, it will volunteerly yield to reduce the debts
 extern void (*burrito_caller)(void);
 extern int  fake_yield_flag;
+static unsigned long long my_yield_time = 40000000000;
 static void
 check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 {
@@ -4510,7 +4511,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	 */
 	se = __pick_first_entity(cfs_rq);
     delta = curr->vruntime - se->vruntime;
-	trace_sched_vcpu_runtime3(curtask, delta, ideal_runtime);
+	trace_sched_vcpu_runtime3(curtask, delta, get_debts(current));
 
     if(vcfs_timer3 && current->tmp_lock==100) //protocol: A Lannister Always Pays His Debts
     {
@@ -4524,7 +4525,8 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
         // ------> MATCH, WE MARK IT AS POSSIBLE IO
         else
         {
-			possible_io=1;
+			if(current->boost_heap)
+				possible_io=1;
 //            trace_sched_vcpu_runtime5(curtask, delta, ideal_runtime);
         }
     }
@@ -4539,11 +4541,11 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 //other yield :maximul overcommit rate * ideal_time
 //prolong : one tick per time 
 //We need very good implementation here. 
-	if(vcfs_timer &&  current->flags & PF_VCPU && get_debts(current) > 12000000)
+	if(vcfs_timer &&  current->flags & PF_VCPU)
     {
         if(delta < (s64)(ideal_runtime))
         {
-            if(((!io_vcpu_mark)&& !current->must_yield))
+            if(((!io_vcpu_mark)&& !current->must_yield) && get_debts(current) > 50000000)
             {
 				//boost_heap, if I used to be IO vCPU, I should have chance to take a break
 				//so if I don't run IO for a short time, it doesn't mean I'm not IO anymore
@@ -4569,9 +4571,9 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 					}
 					else
 					{
-						compensate = update_debts(current,0,skip_time*ideal_runtime);
+						compensate = update_debts(current,0, 4* skip_time*ideal_runtime);
 						trace_sched_vcpu_runtime6(curtask, 555, current->boost_heap);
-						curr->vruntime += skip_time*ideal_runtime;
+						curr->vruntime += 4* skip_time*ideal_runtime;
 						delta = curr->vruntime - se->vruntime;
 					}
 				}
@@ -4595,7 +4597,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 			rearrange_vcpu();
 		}
 	}
-    if(current->must_yield )
+    if(current->must_yield && ( get_debts(current) < my_yield_time))
     {
 		current->conflict = current->conflict>>1; //if I'm running IO and yield, we should reduce the conflict. 
 
@@ -4603,6 +4605,10 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
         //curr->sum_exec_runtime = curr->prev_sum_exec_runtime + ideal_runtime + 1000000;
         if(vcfs_timer)
         {
+			if(vcfs_timer4)
+				update_debts(current->yield_to,ideal_runtime,0);
+			else
+				update_debts(current->yield_to,1200000,0);
 			if( curr->vruntime < se->vruntime + ideal_runtime)
 			{
 				update_debts(current,0,ideal_runtime - delta);
@@ -4631,7 +4637,7 @@ no_yield:
 	{
 		// ------> POLICY 1: FOR BOOST VCPU, IT WILL BE DEMARKED. BUT GAIN ONE MORE TICK
 
-        if(io_vcpu_mark && current->tmp_lock==100  && ( get_debts(current) < yield_time))
+        if(io_vcpu_mark && current->tmp_lock==100 && ( get_debts(current) < my_yield_time))
         {
 			// IF THERE IS IO INDICATOR COME DURING THIS TICK IT KEEP BOOST
 			if(vcfs_timer)
