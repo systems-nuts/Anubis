@@ -4597,12 +4597,17 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 			rearrange_vcpu();
 		}
 	}
-    if(current->must_yield && ( get_debts(current) < my_yield_time))
+    if(current->must_yield)
     {
 		current->conflict = current->conflict>>1; //if I'm running IO and yield, we should reduce the conflict. 
 
         //For yield, we fake it, to let the CFS think it already run enough time
         //curr->sum_exec_runtime = curr->prev_sum_exec_runtime + ideal_runtime + 1000000;
+		if(( get_debts(current) > my_yield_time))
+		{
+			current->must_yield=0;
+			goto no_yield;
+		}
         if(vcfs_timer)
         {
 			if(vcfs_timer4)
@@ -4629,7 +4634,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
     }
 //no more boost
 no_yield:
-
+	
 	trace_sched_vcpu_runtime7(curtask,curr->vruntime,8);
 	if (delta < 0)
 		return;
