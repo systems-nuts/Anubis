@@ -4540,7 +4540,6 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 //We need very good implementation here. 
 	if(vcfs_timer &&  current->flags & PF_VCPU)
     {
-		trace_sched_vcpu_runtime4(curtask, 0, get_debts(current));
         if(delta < (s64)(ideal_runtime))
         {
             if(((!io_vcpu_mark)&& !current->must_yield))
@@ -4563,19 +4562,16 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 		            {
 				        compensate = update_debts(current,0,ideal_runtime);
 						trace_sched_vcpu_runtime6(curtask, 123, get_debts(current));
-						curr->vruntime +=  compensate;
+						curr->vruntime =  se->vruntime + compensate;
 						delta = curr->vruntime - se->vruntime;
 					}
 					else
 					{
 						//UPDATE April19 2023
 						//For high overcommit rate, the non-IO vCPU should yield more
-						if(vcfs_timer4)
-							compensate = update_debts(current,0,2*skip_time*ideal_runtime);
-						else
-							compensate = update_debts(current,0,4*skip_time*ideal_runtime);
+						compensate = update_debts(current,0,skip_time*ideal_runtime);
 						trace_sched_vcpu_runtime6(curtask, 555, current->boost_heap);
-						curr->vruntime += compensate;
+						curr->vruntime =  se->vruntime + compensate;
 						delta = curr->vruntime - se->vruntime;
 					}
 				}
@@ -4593,10 +4589,42 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 		return;
 	trace_sched_vcpu_runtime7(curtask,curr->vruntime,7);
 	// ------> IRQ OR IPI COME, CURRENT TASK MARK AS YIELD, IT YIELDS TO THE BOOST VCPU
+
+	if(current->must_yield && io_vcpu_mark)
+	{
+		//if current is running IO but background is also trying to run IO, we don't yield, instead we count for conflict
+		current->conflict++;
+		if(current->conflict>2 && vcfs_timer4) // if conflict is high enough, we should rearrange the vCPU
+		{
+			trace_sched_vcpu_runtime4(curtask, current->conflict, 111);
+			rearrange_vcpu();
+		}
+	}
     if(current->must_yield && (!io_vcpu_mark))
     {
+		current->conflict = current->conflict>>1; //if I'm running IO and yield, we should reduce the conflict. 
+
         //For yield, we fake it, to let the CFS think it already run enough time
         //curr->sum_exec_runtime = curr->prev_sum_exec_runtime + ideal_runtime + 1000000;
+		/*
+		skip_time=1;
+        if (se != &current->yield_to->se)
+        {
+            ___se=se;
+            while(___se!=NULL)
+            {
+                if(___se != &current->yield_to->se)
+                {
+                    ___se=__pick_next_entity(___se);
+                    skip_time++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+		*/
         if(vcfs_timer)
         {
             if(!update_debts(current->yield_to,ideal_runtime,0))
@@ -4604,7 +4632,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 				goto no_yield;
 			}
 
-			if( curr->vruntime > se->vruntime)
+			if( curr->vruntime > se->vruntime + ideal_runtime)
 			{
 				update_debts(current,0,ideal_runtime-delta);
 			}
@@ -4615,9 +4643,9 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
         }
 
         current->must_yield=0;
-        curr->vruntime = se->vruntime + ideal_runtime + 100000;
-
-        delta = curr->vruntime - se->vruntime;
+        curr->vruntime = se->vruntime + ideal_runtime + 100000; //current yield to fake run finish
+		yield_to->se->vruntime=se->vruntime; //the yield to should be like the next 
+        delta = curr->vruntime - se->vruntime; //so we fake the next vruntime to yield to se
         //We set the one to yield as lucky guy, and lucky guy will enjoy higher time slice
         
 		current->running_io= current->lucky_guy = 0;
@@ -4659,7 +4687,7 @@ no_yield:
         if(io_vcpu_mark && current->tmp_lock==100  && !fake_yield_flag)
         {
 			/*
-			if(curr->vruntime >= se->vruntime + ideal_runtime)
+			if(curr->vruntime > se->vruntime + ideal_runtime)
 			{
 				if(vcfs_timer)
 					update_debts(current,curr->vruntime - (se->vruntime + ideal_runtime),0);
