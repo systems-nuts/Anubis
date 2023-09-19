@@ -1700,6 +1700,12 @@ void timer_clear_idle(void)
  * Called from the timer interrupt handler to charge one tick to the current
  * process.  user_tick is 1 if the tick is user time, 0 for system.
  */
+
+//AUG 15 2023 TONG
+//@Huawei
+//add rdtsc for measuring the overhead
+#include<asm/msr.h>
+#include<asm/tsc.h>
 void update_process_times(int user_tick)
 {
 	struct task_struct *p = current;
@@ -1714,7 +1720,11 @@ void update_process_times(int user_tick)
 	if (in_irq())
 		irq_work_tick();
 #endif
+	__u64 anubis_cycle;
+    anubis_cycle=get_cycles();
 	scheduler_tick();
+	if(current->flags & PF_VCPU)
+		trace_timer_anubis_cycle(get_cycles()-anubis_cycle);
 	if (IS_ENABLED(CONFIG_POSIX_TIMERS))
 		run_posix_cpu_timers();
 }

@@ -1370,6 +1370,7 @@ struct task_struct {
     __u64               lannisters_debts; //the debts IO vcpu should pay
 	int 				fake_yield;
     unsigned long       previous_cr3;
+	int					conflict; // Both vCPU is trying to preemptive each other. 
 //TONG Patch for Antonio GS idea
     unsigned long gcurrent_ptr;
     unsigned long possible_io_task;

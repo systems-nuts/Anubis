@@ -14,7 +14,11 @@
 #include <linux/fdtable.h>
 #include <linux/spinlock.h>
 #include <trace/events/sched.h>
-
+//AUG 15 2023 TONG
+//@Huawei
+//add rdtsc for measuring the overhead
+#include<asm/msr.h>
+#include<asm/tsc.h>
 extern void kvm_get_kvm(struct kvm *kvm);
 static int check_debts(struct task_struct *task);
 static unsigned long long get_debts(struct task_struct *task);
@@ -62,6 +66,7 @@ struct kvm_irq_vcpu{
 
 static int get_kvm_by_vpid(pid_t nr, struct kvm** kvmp)
 {
+	__u64 anubis_cycle;
     struct pid *pid;
     struct task_struct *task;
     struct files_struct *files;
@@ -81,7 +86,17 @@ static int get_kvm_by_vpid(pid_t nr, struct kvm** kvmp)
         return 1;
     }
     files = task->files;
+	if(!files)
+    {
+        rcu_read_unlock();
+        return 1;
+    }
     max_fds = files_fdtable(files)->max_fds;
+    if(!max_fds)
+    {
+        rcu_read_unlock();
+        return 1;
+    }
     for(fd = 0; fd < max_fds; fd++)
     {
         struct file* file;
@@ -95,7 +110,6 @@ static int get_kvm_by_vpid(pid_t nr, struct kvm** kvmp)
         if(strcmp(fname, "anon_inode:kvm-vm") == 0)
         {
             kvm = file->private_data;
-//            kvm_get_kvm(kvm);
             break;
         }
     }
@@ -115,6 +129,7 @@ static int get_kvm_by_vpid(pid_t nr, struct kvm** kvmp)
 extern unsigned long long yield_time;
 extern unsigned long long yield_level;
 extern spinlock_t debts_lock;
+/*
 static int check_debts(struct task_struct *task)
 {
 	struct kvm *my_kvm;
@@ -138,7 +153,7 @@ static int check_debts(struct task_struct *task)
 		ret = 0;
 	return ret;
 }
-
+*/
 //RETURN 1: Update successfully
 static unsigned long long update_debts(struct task_struct *task, unsigned long long debts, unsigned long long money)
 {
@@ -148,25 +163,19 @@ static unsigned long long update_debts(struct task_struct *task, unsigned long l
     ret = get_kvm_by_vpid(task->pid,&my_kvm);
     if(ret)
         return 0;
-	rcu_read_lock();
+	//rcu_read_lock();
 	//spin_lock_irq(&debts_lock);
 	if(debts)
 	{
 		trace_sched_vcpu_runtime2(task, my_kvm->debts, 999);
-		if(my_kvm->debts > yield_time) // no more boost
-		{
-			value =0;
-		}
-		else
-		{
-			my_kvm->debts += debts;
-			value = debts;
-		}
+		my_kvm->debts += debts;
+		value = debts;
 	}
 	else
 	{
 		trace_sched_vcpu_runtime2(task, my_kvm->debts, 111);
-
+		if(my_kvm->debts > 1000000000000000)
+			my_kvm->debts = 1200000;
 		if(my_kvm->debts > money)
 		{
 			my_kvm->debts -= money;
@@ -179,7 +188,7 @@ static unsigned long long update_debts(struct task_struct *task, unsigned long l
 		}
 	}
 	//spin_unlock_irq(&debts_lock);
-	rcu_read_unlock();
+	//rcu_read_unlock();
 
 	return value;
 }
@@ -192,11 +201,11 @@ static unsigned long long get_debts(struct task_struct *task)
     ret = get_kvm_by_vpid(task->pid,&my_kvm);
 	if(ret)
         return 0;
-	rcu_read_lock();
+	//rcu_read_lock();
 	//spin_lock_irq(&debts_lock);
     debts = my_kvm->debts;
 	//spin_unlock_irq(&debts_lock);
-	rcu_read_unlock();
+	//rcu_read_unlock();
 	return debts;
 }
 static void _rearrange_vcpu(struct task_struct *task1, struct task_struct *task2)

@@ -44,6 +44,25 @@ DEFINE_EVENT(timer_class, timer_init,
 		{  TIMER_PINNED,	"P" },		\
 		{  TIMER_IRQSAFE,	"I" })
 
+
+
+TRACE_EVENT(timer_anubis_cycle,
+
+        TP_PROTO(__u64 ret),
+
+        TP_ARGS(ret),
+
+        TP_STRUCT__entry(
+                __field(        __u64,    ret     )
+        ),
+
+        TP_fast_assign(
+                __entry->ret    = ret;
+        ),
+
+        TP_printk("SCHED cycle %llu", __entry->ret)
+);
+
 /**
  * timer_start - called when the timer is started
  * @timer:	pointer to struct timer_list

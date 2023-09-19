@@ -4459,10 +4459,16 @@ extern void (*burrito_caller)(void);
 extern int  fake_yield_flag;
 static int gs_mistake = 0; //to adjust GS, if no confidence at all during couple of time, we consider it is non IO even it is a match
 static unsigned long long my_yield_time = 100000000000;
+//AUG 15 2023 TONG
+//@Huawei
+//add rdtsc for measuring the overhead
+#include<asm/msr.h>
+#include<asm/tsc.h>
 static void
 check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 {
 //	trace_sched_vcpu_runtime7(task_of(curr),curr->vruntime,4);
+	__u64 stupid_cycle;
 	unsigned long ideal_runtime, delta_exec;
 	struct sched_entity *se, *__se, *___se;
     struct task_struct *tsk, *curtask, *yield_to_task, *__task;
@@ -4512,8 +4518,8 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	 */
 	se = __pick_first_entity(cfs_rq);
     delta = curr->vruntime - se->vruntime;
-	if(vcfs_timer)
-		trace_sched_vcpu_runtime3(curtask, delta, get_debts(current));
+	//if(vcfs_timer)
+	//	trace_sched_vcpu_runtime3(curtask, delta, get_debts(current));
 
     if(vcfs_timer3 && current->tmp_lock==100) //protocol: A Lannister Always Pays His Debts
     {
@@ -4551,7 +4557,8 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
     {
         if(delta < (s64)(ideal_runtime))
         {
-            if(((!io_vcpu_mark)&& !current->must_yield) && get_debts(current) > 50000000)
+			__u64 debts_tmp = get_debts(current);
+            if(((!io_vcpu_mark)&& !current->must_yield) && debts_tmp > 50000000)
             {
 				//boost_heap, if I used to be IO vCPU, I should have chance to take a break
 				//so if I don't run IO for a short time, it doesn't mean I'm not IO anymore
@@ -4649,7 +4656,6 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
     }
 //no more boost
 no_yield:
-	
 	trace_sched_vcpu_runtime7(curtask,curr->vruntime,8);
 	if (delta < 0)
 		return;
@@ -4802,7 +4808,6 @@ static void put_prev_entity(struct cfs_rq *cfs_rq, struct sched_entity *prev)
 	}
 	cfs_rq->curr = NULL;
 }
-
 static void
 entity_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr, int queued)
 {
@@ -4835,7 +4840,9 @@ entity_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr, int queued)
 #endif
 
 	if (cfs_rq->nr_running > 1)
+	{
 		check_preempt_tick(cfs_rq, curr);
+	}
 
 }
 

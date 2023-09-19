@@ -18,6 +18,22 @@
 	ERSN(S390_UCONTROL), ERSN(WATCHDOG), ERSN(S390_TSCH), ERSN(EPR),\
 	ERSN(SYSTEM_EVENT), ERSN(S390_STSI), ERSN(IOAPIC_EOI),          \
 	ERSN(HYPERV), ERSN(ARM_NISV), ERSN(X86_RDMSR), ERSN(X86_WRMSR)
+TRACE_EVENT(kvm_anubis_IRQ_cycle,
+
+        TP_PROTO(__u64 ret),
+
+        TP_ARGS(ret),
+
+        TP_STRUCT__entry(
+                __field(        __u64,    ret     )
+        ),
+
+        TP_fast_assign(
+                __entry->ret    = ret;
+        ),
+
+        TP_printk("IRQ cycle %llu", __entry->ret)
+);
 
 TRACE_EVENT(kvm_ioevent_irq,
         TP_PROTO(unsigned int vcpu),
@@ -416,6 +432,25 @@ TRACE_EVENT(kvm_halt_poll_ns,
 #define trace_kvm_halt_poll_ns_shrink(vcpu_id, new, old) \
 	trace_kvm_halt_poll_ns(false, vcpu_id, new, old)
 
+//FOR ANUBIS
+TRACE_EVENT(kvm_ipi_check,
+
+        TP_PROTO(int src, int dst),
+
+        TP_ARGS(src, dst),
+
+        TP_STRUCT__entry(
+                __field(    int,    src )
+                __field(        int,    dst     )
+        ),
+
+        TP_fast_assign(
+        __entry->src    = src;
+                __entry->dst    = dst;
+        ),
+
+        TP_printk("IPI %d -> %d",__entry->src, __entry->dst)
+);
 
 
 

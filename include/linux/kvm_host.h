@@ -506,7 +506,7 @@ struct kvm {
 	pid_t userspace_pid;
 	unsigned int max_halt_poll_ns;
 //PATCH TONG FOR BOOSTING
-	signed long long debts; 
+	unsigned long long debts; 
 	int debts_sync; 
 };
 

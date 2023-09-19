@@ -31,6 +31,25 @@ TRACE_EVENT(sched_kthread_stop,
 	TP_printk("comm=%s pid=%d", __entry->comm, __entry->pid)
 );
 //EXAMPLE 
+TRACE_EVENT(sched_check_IRQ,
+
+        TP_PROTO(int irq, unsigned long long ns),
+
+        TP_ARGS(irq, ns),
+
+        TP_STRUCT__entry(
+                __field(    int,    irq )
+                __field(    unsigned long long,    ns     )
+        ),
+
+        TP_fast_assign(
+        __entry->irq    = irq;
+                __entry->ns    = ns;
+        ),
+
+        TP_printk("%s %lld",__entry->irq ? "Recent yes" : "Recent no", __entry->ns)
+);
+
 TRACE_EVENT(sched_force_sched,
 
         TP_PROTO(int cpu, int ret),
@@ -154,8 +173,102 @@ TRACE_EVENT(sched_do_wake,
 
         TP_printk("%llu yield %d svcpu %d dvcpu %d",__entry->ktime,__entry->yield, __entry->svcpu, __entry->dvcpu)
 );
+TRACE_EVENT(sched_anubis_cycle5,
 
+        TP_PROTO(__u64 ret),
 
+        TP_ARGS(ret),
+
+        TP_STRUCT__entry(
+                __field(        __u64,    ret     )
+        ),
+
+        TP_fast_assign(
+                __entry->ret    = ret;
+        ),
+
+        TP_printk("5  %llu", __entry->ret)
+);
+TRACE_EVENT(sched_anubis_cycle6,
+
+        TP_PROTO(__u64 ret),
+
+        TP_ARGS(ret),
+
+        TP_STRUCT__entry(
+                __field(        __u64,    ret     )
+        ),
+
+        TP_fast_assign(
+                __entry->ret    = ret;
+        ),
+
+        TP_printk("6  %llu", __entry->ret)
+);
+TRACE_EVENT(sched_anubis_cycle4,
+
+        TP_PROTO(__u64 ret),
+
+        TP_ARGS(ret),
+
+        TP_STRUCT__entry(
+                __field(        __u64,    ret     )
+        ),
+
+        TP_fast_assign(
+                __entry->ret    = ret;
+        ),
+
+        TP_printk("4  %llu", __entry->ret)
+);
+TRACE_EVENT(sched_anubis_cycle3,
+
+        TP_PROTO(__u64 ret),
+
+        TP_ARGS(ret),
+
+        TP_STRUCT__entry(
+                __field(        __u64,    ret     )
+        ),
+
+        TP_fast_assign(
+                __entry->ret    = ret;
+        ),
+
+        TP_printk("3  %llu", __entry->ret)
+);
+TRACE_EVENT(sched_anubis_cycle2,
+
+        TP_PROTO(__u64 ret),
+
+        TP_ARGS(ret),
+
+        TP_STRUCT__entry(
+                __field(        __u64,    ret     )
+        ),
+
+        TP_fast_assign(
+                __entry->ret    = ret;
+        ),
+
+        TP_printk("2  %llu", __entry->ret)
+);
+TRACE_EVENT(sched_anubis_cycle1,
+
+        TP_PROTO(__u64 ret),
+
+        TP_ARGS(ret),
+
+        TP_STRUCT__entry(
+                __field(        __u64,    ret     )
+        ),
+
+        TP_fast_assign(
+                __entry->ret    = ret;
+        ),
+
+        TP_printk("findkvm cycle %llu", __entry->ret)
+);
 TRACE_EVENT(sched_check_tsk,
 
         TP_PROTO(int ret),
