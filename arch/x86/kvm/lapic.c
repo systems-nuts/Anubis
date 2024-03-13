@@ -1320,7 +1320,6 @@ EXPORT_SYMBOL_GPL(kvm_apic_set_eoi_accelerated);
 
 extern void boost_IO_vcpu(struct kvm*,int,int);
 //AUG 15 2023 TONG
-//@Huawei
 //add rdtsc for measuring the overhead
 #include<asm/msr.h>
 #include<asm/tsc.h>

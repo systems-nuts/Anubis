@@ -890,10 +890,6 @@ static int __init proc_cmdline_init(void)
 	_counter=0;
 	_counter2=0;
 	ct_offset=0;
-	//tsk=kthread_run(vcpu_boosting_worker, NULL, "Huawei_new_Boosting");
-        //if (IS_ERR(tsk)) {
-         //       printk(KERN_ERR "Cannot create KVM_IO, %ld\n", PTR_ERR(tsk));
-        //}
 	proc_create_single("vcpu_list_show",0,NULL,vcpu_list_show);
 	proc_create_single("IPI_boost", 0, NULL, cfs_print);
 	proc_create_single("IRQ_redirect",0 , NULL, irq_check);

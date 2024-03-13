@@ -4399,7 +4399,6 @@ dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 static void set_next_buddy(struct sched_entity *se);
 static void set_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *se);
 static void set_skip_buddy(struct sched_entity *se);
-//Huawei boosting 
 //extern int cfs_boost_flag;
 //extern int check_cpu_boosting(int);
 extern int cfs_print_flag;
@@ -4460,7 +4459,6 @@ extern int  fake_yield_flag;
 static int gs_mistake = 0; //to adjust GS, if no confidence at all during couple of time, we consider it is non IO even it is a match
 static unsigned long long my_yield_time = 100000000000;
 //AUG 15 2023 TONG
-//@Huawei
 //add rdtsc for measuring the overhead
 #include<asm/msr.h>
 #include<asm/tsc.h>
@@ -11686,7 +11684,7 @@ int sched_trace_rq_nr_running(struct rq *rq)
 EXPORT_SYMBOL_GPL(sched_trace_rq_nr_running);
 
 
-//TONG for Huawei
+//TONG 
 int sched_check_task_is_running(struct task_struct *tsk)
 {
 	struct cfs_rq *rq;
@@ -11780,11 +11778,9 @@ void sched_force_schedule(struct task_struct *tsk, int clear_flag)
 	double_rq_lock(rq,curr_rq);
 
 	//we only force another VCPU to yield, if it is other task,
-	//such as migrater or numa balancer, we will fucked up because of 
 	//some deadlock issues
 	if(!(poor_guy->flags & PF_VCPU) || (poor_guy->pid == tsk->pid))
 	{	
-//		printk("we are try fuck a non vpu thread, leave it away!\n");
 		double_rq_unlock(rq,curr_rq);
 		local_irq_restore(flags);
 		return;
