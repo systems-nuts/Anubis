@@ -11,12 +11,19 @@
 #include <linux/list.h>
 #include <linux/list_sort.h>
 #include <linux/kvm_host.h>
-#include<linux/fdtable.h>
-#include<linux/spinlock.h>
+#include <linux/fdtable.h>
+#include <linux/spinlock.h>
+#include <trace/events/sched.h>
+//AUG 15 2023 TONG
+//@Huawei
+//add rdtsc for measuring the overhead
+#include<asm/msr.h>
+#include<asm/tsc.h>
 extern void kvm_get_kvm(struct kvm *kvm);
 static int check_debts(struct task_struct *task);
-static signed long long get_debts(struct task_struct *task);
-static signed long long update_debts(struct task_struct *task, signed long long debts, signed long long money);
+static unsigned long long get_debts(struct task_struct *task);
+static unsigned long long update_debts(struct task_struct *task, unsigned long long debts, unsigned long long money);
+static void rearrange_vcpu(void);
 /*
  * Hash table implementation for scheduler boosting
  *
@@ -59,6 +66,7 @@ struct kvm_irq_vcpu{
 
 static int get_kvm_by_vpid(pid_t nr, struct kvm** kvmp)
 {
+	__u64 anubis_cycle;
     struct pid *pid;
     struct task_struct *task;
     struct files_struct *files;
@@ -78,7 +86,17 @@ static int get_kvm_by_vpid(pid_t nr, struct kvm** kvmp)
         return 1;
     }
     files = task->files;
+	if(!files)
+    {
+        rcu_read_unlock();
+        return 1;
+    }
     max_fds = files_fdtable(files)->max_fds;
+    if(!max_fds)
+    {
+        rcu_read_unlock();
+        return 1;
+    }
     for(fd = 0; fd < max_fds; fd++)
     {
         struct file* file;
@@ -92,7 +110,6 @@ static int get_kvm_by_vpid(pid_t nr, struct kvm** kvmp)
         if(strcmp(fname, "anon_inode:kvm-vm") == 0)
         {
             kvm = file->private_data;
-//            kvm_get_kvm(kvm);
             break;
         }
     }
@@ -109,7 +126,10 @@ static int get_kvm_by_vpid(pid_t nr, struct kvm** kvmp)
 //unsigned long get_debts(struct task_struct *task);
 
 //RETURN 1:  needs to pay debts
+extern unsigned long long yield_time;
+extern unsigned long long yield_level;
 extern spinlock_t debts_lock;
+/*
 static int check_debts(struct task_struct *task)
 {
 	struct kvm *my_kvm;
@@ -119,9 +139,9 @@ static int check_debts(struct task_struct *task)
 	if(ret)
 		return 0;
 	rcu_read_lock();
-	spin_lock_irq(&debts_lock);
+	//spin_lock_irq(&debts_lock);
 	debts = my_kvm->debts;
-	spin_unlock_irq(&debts_lock);
+	//spin_unlock_irq(&debts_lock);
 	rcu_read_unlock();
 	if(debts > 5000000000)
 		debts = 5000000000; 
@@ -133,51 +153,93 @@ static int check_debts(struct task_struct *task)
 		ret = 0;
 	return ret;
 }
-
+*/
 //RETURN 1: Update successfully
-static signed long long update_debts(struct task_struct *task, signed long long debts, signed long long money)
+static unsigned long long update_debts(struct task_struct *task, unsigned long long debts, unsigned long long money)
 {
 	struct kvm *my_kvm;
     int ret;
-	signed long long value;
+	unsigned long long value;
     ret = get_kvm_by_vpid(task->pid,&my_kvm);
     if(ret)
         return 0;
-	rcu_read_lock();
-	spin_lock_irq(&debts_lock);
-	my_kvm->debts += debts;
-	if(my_kvm->debts >  money)
+	//rcu_read_lock();
+	//spin_lock_irq(&debts_lock);
+	if(debts)
 	{
-		my_kvm->debts -= money;
-		value = money;
+		trace_sched_vcpu_runtime2(task, my_kvm->debts, 999);
+		my_kvm->debts += debts;
+		value = debts;
 	}
 	else
 	{
-		value = my_kvm->debts;
-		my_kvm->debts =0;
+		trace_sched_vcpu_runtime2(task, my_kvm->debts, 111);
+		if(my_kvm->debts > 1000000000000000)
+			my_kvm->debts = 1200000;
+		if(my_kvm->debts > money)
+		{
+			my_kvm->debts -= money;
+			value = money;
+		}
+		else
+		{
+			value = 0;
+			my_kvm->debts =0;
+		}
 	}
-	spin_unlock_irq(&debts_lock);
-	rcu_read_unlock();
+	//spin_unlock_irq(&debts_lock);
+	//rcu_read_unlock();
 
 	return value;
 }
 
-static signed long long get_debts(struct task_struct *task)
+static unsigned long long get_debts(struct task_struct *task)
 {
 	struct kvm *my_kvm;
-    long long debts;
+    unsigned long long debts;
 	int ret;
     ret = get_kvm_by_vpid(task->pid,&my_kvm);
 	if(ret)
         return 0;
-	rcu_read_lock();
-	spin_lock_irq(&debts_lock);
+	//rcu_read_lock();
+	//spin_lock_irq(&debts_lock);
     debts = my_kvm->debts;
-	spin_unlock_irq(&debts_lock);
-	rcu_read_unlock();
+	//spin_unlock_irq(&debts_lock);
+	//rcu_read_unlock();
 	return debts;
 }
+static void _rearrange_vcpu(struct task_struct *task1, struct task_struct *task2)
+{
+	cpumask_t mask1, mask2;
+	cpumask_copy(&mask1, &task1->cpus_mask);
+    cpumask_copy(&mask2, &task2->cpus_mask);
 
+    /* Set the CPU affinity of task1 to mask2 */
+    sched_setaffinity(task1, &mask2);
 
+    /* Set the CPU affinity of task2 to mask1 */
+    sched_setaffinity(task2, &mask1);
+}
+static void rearrange_vcpu(void)
+{
+    struct kvm *my_kvm;
+	struct task_struct *task;
+	struct kvm_vcpu *vcpu;
+    int ret, i;
+    ret = get_kvm_by_vpid(current->pid,&my_kvm);
+    if(ret)
+        return;
+	kvm_for_each_vcpu(i, vcpu, my_kvm) {
+		task = pid_task(vcpu->pid, PIDTYPE_PID);
+		if(task==current)
+			continue;
+		if(task->conflict==0 && task->boost_heap==0)
+		{
+			printk("switch %d %d\n",current->pid,task->pid);
+			_rearrange_vcpu(current, task);
+			return;
+		}
+	}
+}
 
 #endif

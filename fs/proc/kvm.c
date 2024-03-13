@@ -228,7 +228,6 @@ static int read_all(struct seq_file *m, void *v)
 	struct vhost_table *cur2;
 	struct list_head *pos;
         struct kvm_io *entry;
-	printk("fuck\n");
 	
 	list_for_each(pos,&kvm_list->node)
         {

@@ -4918,7 +4918,7 @@ static int handle_io(struct kvm_vcpu *vcpu)
 	++vcpu->stat.io_exits;
 	//FOR POSTMARK and PING TONG PATCH
 	vcpu_task->lucky_guy+=1;
-	vcpu_task->boost_heap+=1;
+//	vcpu_task->boost_heap+=1;
 	//
 	if (string)
 		return kvm_emulate_instruction(vcpu, 0);
@@ -5400,7 +5400,7 @@ static int handle_ept_misconfig(struct kvm_vcpu *vcpu)
 
 		trace_kvm_fast_mmio(gpa);
         vcpu_task->latest_io_cr3=vmcs_readl(GUEST_CR3);
-		vcpu_task->boost_heap+=1;
+		//vcpu_task->boost_heap+=1;
 		vcpu_task->lucky_guy+=1;
 		trace_kvm_get_vcpu_GS_MMIO(vcpu_task->possible_io_task);
 		if(vcpu_task->tmp_lock == 100)

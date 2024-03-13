@@ -1075,8 +1075,7 @@ static int __apic_accept_irq(struct kvm_lapic *apic, int delivery_mode,
 	if(IRQ_redirect_log)
 	{
 		if(current->comm[0]=='q' &&current->comm[1]=='e')
-
-	                trace_kvm_apic_accept_irq(vcpu->vcpu_id, delivery_mode,
+	        trace_kvm_apic_accept_irq(vcpu->vcpu_id, delivery_mode,
         	                                 trig_mode, vector);
 		
 		if(current->comm[0]=='v' &&current->comm[1]=='h')
@@ -1084,6 +1083,10 @@ static int __apic_accept_irq(struct kvm_lapic *apic, int delivery_mode,
                                                  trig_mode, vector);
 
 	}
+	else
+		trace_kvm_apic_accept_irq(vcpu->vcpu_id, delivery_mode,
+                                             trig_mode, vector);
+
 	/*
 	if(ctx_sw_flag)
 	{
@@ -1316,9 +1319,15 @@ EXPORT_SYMBOL_GPL(kvm_apic_set_eoi_accelerated);
 
 
 extern void boost_IO_vcpu(struct kvm*,int,int);
+//AUG 15 2023 TONG
+//add rdtsc for measuring the overhead
+#include<asm/msr.h>
+#include<asm/tsc.h>
 
 void kvm_apic_send_ipi(struct kvm_lapic *apic, u32 icr_low, u32 icr_high)
 {
+	__u64 anubis_cycle;
+	anubis_cycle=get_cycles();
 	struct kvm_lapic_irq irq;
 
 	irq.vector = icr_low & APIC_VECTOR_MASK;
@@ -1339,9 +1348,10 @@ void kvm_apic_send_ipi(struct kvm_lapic *apic, u32 icr_low, u32 icr_high)
         (int)apic->vcpu->kvm->userspace_pid);	
 	if(cfs_print_flag)
 	{
-		boost_IO_vcpu(apic->vcpu->kvm,current->pid,irq.dest_id);
-		//trace_kvm_apic_ipi(icr_low, irq.dest_id);
-		
+		if(irq.vector ==0xfd)//rescheduling IRQ
+			boost_IO_vcpu(apic->vcpu->kvm,current->pid,irq.dest_id);
+		trace_kvm_apic_ipi(icr_low, irq.dest_id);
+		//trace_kvm_apic_ipi(2, 2);	
 	}
 	if(IRQ_redirect_log)
         {
@@ -1350,6 +1360,7 @@ void kvm_apic_send_ipi(struct kvm_lapic *apic, u32 icr_low, u32 icr_high)
         }
 
 	kvm_irq_delivery_to_apic(apic->vcpu->kvm, apic, &irq, NULL);
+	trace_kvm_anubis_IPI_cycle(get_cycles()-anubis_cycle);
 }
 
 static u32 apic_get_tmcct(struct kvm_lapic *apic)

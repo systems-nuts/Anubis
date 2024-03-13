@@ -29,7 +29,7 @@ static struct kvm_irq_vcpu *irq_list;
 static int booster_pid;
 static int control;
 unsigned long long yield_level=0;
-unsigned long long yield_time=2000000;
+unsigned long long yield_time=40000000000; //max yield 50sec by default
 EXPORT_SYMBOL(yield_time);
 EXPORT_SYMBOL(yield_level);
 int list_table_vcpu_add(int pid1, int pid2, int id, int cpu)
@@ -82,31 +82,49 @@ extern void sched_extend_life(struct task_struct *tsk);
 //THEN WHENEVER WE CHECK ONE, WE JUST MINUS 1 UNTIL IT IS 0 -> NO IRQ 
 //SO IT WOULD BE FINE. 
 //2022-08-03 TONG AT UoE, TRY FINISH THIS PATCH BY NEXT DAY.
+//2023-05-02 TONG AT UoE, UPDATE this, we only boost the IPI after a certain time it received irq
+//Each vCPU received a IRQ, will has a timestamp, within this time slice, we boost all the IPI.
+//return 1 indicate recently received IRQ
+int check_is_IRQ_vcpu(int vcpu_pid)
+{
+	struct task_struct *IRQ_vcpu;
+	ktime_t time_interval;
+	u64 ns;
+	IRQ_vcpu = find_get_task_by_vpid(vcpu_pid);
+	time_interval = ktime_sub(ktime_get(),IRQ_vcpu->event_fd_time);
+	ns = ktime_to_ns(time_interval);
+	if(ns < 4800000) //about 2 tick 2.4ms
+	{
+		trace_sched_check_IRQ(1,ns);
+		return 1; //recently have received IRQ
+	}
+	else
+	{
+		trace_sched_check_IRQ(0,ns);
+		return 0; //nope
+	}
+}
 int check_irq_vcpu(int vcpu_vpid, int curr_kvm)
 {
-        struct kvm_irq_vcpu *irq;
+    struct kvm_irq_vcpu *irq;
 	int i,vcpu_id=0;
-        struct list_head *pos,*next;
+    struct list_head *pos,*next;
 	struct kvm_vcpu *vcpu;
-	list_for_each_safe(pos,next,&irq_list->lnode)
-        {
-                irq=list_entry(pos,struct kvm_irq_vcpu, lnode);
-		if(irq)
+	list_for_each_safe(pos,next,&irq_list->lnode) 
+    {
+		irq=list_entry(pos,struct kvm_irq_vcpu, lnode);
+		//irq: the vCPU has received the IRQ
+		if(irq) //it it exist
 		{
-			//if IRQ vcpu is the sender
-			if(irq->kvm_pid == curr_kvm)
+			if(irq->kvm_pid == curr_kvm) //this IRQ vCPU is the sender of IPI
 			{
-//				printk("KVM%d \n",curr_kvm);
 				kvm_for_each_vcpu(i, vcpu, irq->kvm_structure)
 				{
-//					printk("KVM%d vcpu %d\n",curr_kvm,vcpu->pid->numbers[0].nr);
-					if(vcpu->pid->numbers[0].nr == vcpu_vpid)
+					if(vcpu->pid->numbers[0].nr == vcpu_vpid) 
 					{
 						vcpu_id=vcpu->vcpu_id;
-//						printk("KVM%d vcpu_id %d\n",curr_kvm,vcpu_id);
 						if(irq->IRQ_time[vcpu_id]>0)
 						{
-//							printk("KVM %d vcpu_id %d count %d\n",curr_kvm,vcpu_id,irq->IRQ_time[vcpu_id]);
 							irq->IRQ_time[vcpu_id]-=1;
 		        	       	        	return 1;
 						}
@@ -116,7 +134,7 @@ int check_irq_vcpu(int vcpu_vpid, int curr_kvm)
 				}
 			}
 		}
-        }
+    }
 	return 0;
 
 }
@@ -182,58 +200,46 @@ void boost_IO_vcpu(struct kvm *kvm, int vcpu_pid, int dest_id)
 	dest_id=order_base_2(dest_id);
 	if(dest_id > kvm->created_vcpus-1) //incase it goes to all node
         dest_id = kvm->created_vcpus-1; 
-		//default goes to 1 -> vcpu0
+	//default goes to 1 -> vcpu0
 	//CLEARLY WE NEED SOME CHANGE TO UPDATE THIS, 
 	//BECAUSE CURRENTLY IT JUST BOOST ALL IPI, 
 	//LET IT ONLY BOOST THE IPI THAT WAKE UP THE 
 	//IO THAT WE WANT INSTEAD OF THE RESCHEDULER OR TIMER, ETC
 	struct list_head *pos;
-        struct vcpu_io *entry;
-        struct task_struct *IO_vcpu;
+    struct vcpu_io *entry;
+    struct task_struct *IO_vcpu;
 	int curr_kvm;
 
-        list_for_each(pos,&vcpu_list->lnode)
-        {
-                entry=list_entry(pos,struct vcpu_io, lnode);
+    list_for_each(pos,&vcpu_list->lnode)
+    {
+		entry=list_entry(pos,struct vcpu_io, lnode);
 		if(!entry)
 			return;
-                if(entry->vcpu_pid == vcpu_pid)
-                {
-                        curr_kvm = entry->kvm_pid;
-                }
-		
-        }
-	//if(!check_irq_vcpu(vcpu_pid,curr_kvm))
-          //      return;
+		if(entry->vcpu_pid == vcpu_pid)
+		{
+			curr_kvm = entry->kvm_pid;
+        }	
+    }
+	//if(!check_is_IRQ_vcpu(vcpu_pid)) //check if sender recently has IRQ
+	//	return;
 
 	list_for_each(pos,&vcpu_list->lnode)
+    {
+		entry=list_entry(pos,struct vcpu_io, lnode);
+        if(!entry)
+			return;
+		if(entry->kvm_pid == curr_kvm && entry->vcpu_id == dest_id)
         {
-                entry=list_entry(pos,struct vcpu_io, lnode);
-                if(!entry)
-                        return;
-                if(entry->kvm_pid == curr_kvm && entry->vcpu_id == dest_id)
-                {
-                        IO_vcpu = find_get_task_by_vpid(entry->vcpu_pid);
-                }
+			IO_vcpu = find_get_task_by_vpid(entry->vcpu_pid);
         }
+	}
 
 	if(!IO_vcpu)
-                return;
-/*
-        if(sched_check_task_is_running(IO_vcpu)) //if current running is IRQ_vcpu
-	{
-		sched_extend_life(IO_vcpu);
-	}
-	else
-        {
-                sched_force_schedule(IO_vcpu,1);
-        }
-*/
+		return;
 	if(!sched_check_task_is_running(IO_vcpu))
 		sched_force_schedule(IO_vcpu,1);
     else
 	{
-		IO_vcpu->boost_heap+=1;
         IO_vcpu->lucky_guy+=1; //if I have a IPI, I will get more time
 	}
 
@@ -243,30 +249,30 @@ EXPORT_SYMBOL(boost_IO_vcpu);
 void boost_IRQ_vcpu(int vcpu_pid)
 {
 	booster_pid = vcpu_pid;
-	//vhost_pid + vcpu_id => vcpu_io
-//	printk("%s %d\n",__func__,vcpu_pid);
 	struct list_head *pos, *pos2;
 	struct kvm_irq_vcpu *irq;
-        struct vcpu_io *entry;
+    struct vcpu_io *entry;
 	struct task_struct *IRQ_vcpu;
-        list_for_each(pos,&vcpu_list->lnode)
-        {
-                entry=list_entry(pos,struct vcpu_io, lnode);
-                if(entry->vcpu_pid == vcpu_pid)
-                {	
-			IRQ_vcpu = find_get_task_by_vpid(entry->vcpu_pid);
-		/*	list_for_each(pos2,&irq_list->lnode)
-		        {
-                		irq=list_entry(pos2,struct kvm_irq_vcpu, lnode);
+    list_for_each(pos,&vcpu_list->lnode)
+    {
+		entry=list_entry(pos,struct vcpu_io, lnode); 
+		if(entry->vcpu_pid == vcpu_pid) //get the vCPU struture from our list
+        {	
+			IRQ_vcpu = find_get_task_by_vpid(entry->vcpu_pid); //get task strut of vCPU
+	//		IRQ_vcpu->event_fd_time= ktime_get();
+			/*
+			list_for_each(pos2,&irq_list->lnode)
+		    {
+        		irq=list_entry(pos2,struct kvm_irq_vcpu, lnode); 
 				if(irq)
 				{
-					if(irq->kvm_pid == entry->kvm_pid)
+					if(irq->kvm_pid == entry->kvm_pid) //mark the vCPU as irq
 						irq->IRQ_vcpu_pid = entry->vcpu_pid;
 				}
-        		}
-		*/
+    		}
+			*/
 		}
-        }
+    }
 	//current running task
 	if(!IRQ_vcpu)
 		return;
@@ -280,12 +286,9 @@ void boost_IRQ_vcpu(int vcpu_pid)
 		if(vcfs_timer2)
 		{
 	        IRQ_vcpu->lucky_guy+=1;
-			IRQ_vcpu->boost_heap+=1;
+//			IRQ_vcpu->boost_heap+=1;
 		}
 	}
-	//if vcpu_io is running. curr->sum_exec_runtime = curr->prev_sum_exec_runtime;
-	//else
-	//vcpu_io -> others vcpu in this pcpu, set_tsk_thread_flag(tsk,TIF_NEED_RESCHED);
 	
 }
 EXPORT_SYMBOL(boost_IRQ_vcpu);
@@ -765,7 +768,7 @@ yield_level_write(struct file *filp, const char __user *ubuf,size_t cnt, loff_t 
 
 static int yield_level_show2(struct seq_file *m, void *v)
 {
-        seq_printf(m, "yield_time %d \n", yield_time);
+        seq_printf(m, "yield_time %llu \n", yield_time);
         return 0;
 }
 static int yield_level_open2(struct inode *inode, struct file *filp)
@@ -777,9 +780,9 @@ static int yield_level_open2(struct inode *inode, struct file *filp)
 static ssize_t
 yield_level_write2(struct file *filp, const char __user *ubuf,size_t cnt, loff_t *ppos)
 {
-        int ret;
+        unsigned long long ret;
         unsigned long long res;
-        ret = kstrtoull_from_user(ubuf, cnt, 10, &res);
+        ret = kstrtoull_from_user(ubuf, cnt, 14, &res);
         if (ret) {
                 /* Negative error code. */
                 return ret;
@@ -887,10 +890,6 @@ static int __init proc_cmdline_init(void)
 	_counter=0;
 	_counter2=0;
 	ct_offset=0;
-	//tsk=kthread_run(vcpu_boosting_worker, NULL, "Huawei_new_Boosting");
-        //if (IS_ERR(tsk)) {
-         //       printk(KERN_ERR "Cannot create KVM_IO, %ld\n", PTR_ERR(tsk));
-        //}
 	proc_create_single("vcpu_list_show",0,NULL,vcpu_list_show);
 	proc_create_single("IPI_boost", 0, NULL, cfs_print);
 	proc_create_single("IRQ_redirect",0 , NULL, irq_check);

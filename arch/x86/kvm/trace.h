@@ -1736,6 +1736,23 @@ TRACE_EVENT(kvm_vcpu_tsc_req,
         TP_printk("tsc: %llx", __entry->cr0)
 );
 
+TRACE_EVENT(kvm_anubis_IPI_cycle,
+
+        TP_PROTO(__u64 ret),
+
+        TP_ARGS(ret),
+
+        TP_STRUCT__entry(
+                __field(        __u64,    ret     )
+        ),
+
+        TP_fast_assign(
+                __entry->ret    = ret;
+        ),
+
+        TP_printk("IPI cycle %llu", __entry->ret)
+);
+
 
 #endif /* _TRACE_KVM_H */
 

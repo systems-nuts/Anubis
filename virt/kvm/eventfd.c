@@ -27,6 +27,11 @@
 #include <trace/events/kvm.h>
 
 #include <kvm/iodev.h>
+//AUG 15 2023 TONG
+//@Huawei
+//add rdtsc for measuring the overhead
+#include<asm/msr.h>
+#include<asm/tsc.h>
 #ifdef CONFIG_HAVE_KVM_IRQFD
 
 static struct workqueue_struct *irqfd_cleanup_wq;
@@ -198,11 +203,15 @@ irqfd_wakeup(wait_queue_entry_t *wait, unsigned mode, int sync, void *key)
 			irq = irqfd->irq_entry;
 		} while (read_seqcount_retry(&irqfd->irq_entry_sc, seq));
 		/* An event has been signaled, inject an interrupt */
+		__u64 anubis_cycle;
+        anubis_cycle=get_cycles();
 		if (kvm_arch_set_irq_inatomic(&irq, kvm,
 					      KVM_USERSPACE_IRQ_SOURCE_ID, 1,
 					      false) == -EWOULDBLOCK)
 			schedule_work(&irqfd->inject);
+		trace_kvm_anubis_IRQ_cycle(get_cycles()-anubis_cycle);
 		srcu_read_unlock(&kvm->irq_srcu, idx);
+
 	}
 
 	if (flags & EPOLLHUP) {
@@ -746,11 +755,6 @@ ioeventfd_write(struct kvm_vcpu *vcpu, struct kvm_io_device *this, gpa_t addr,
 	if (!ioeventfd_in_range(p, addr, len, val))
 		return -EOPNOTSUPP;
 	trace_kvm_ioevent_irq(vcpu->pid->numbers[0].nr);
-
-    if(current->lucky_guy)
-    {
-        current->event_fd_time= ktime_get();
-    }
 
 	eventfd_signal(p->eventfd, 1);
 	return 0;
