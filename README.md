@@ -26,3 +26,23 @@ We will update more test case soon
 ```
 sysbench fileio --file-total-size=10G --file-test-mode=seqrd --time=40 --max-requests=0 --file-extra-flags=direct --report-interval=5 --percentile=99 --threads=1 run
 ```
+
+More details please refer to the paper Maximizing VMs' IO Performance on Overcommitted CPUs with Fairness
+
+@inproceedings{10.1145/3620678.3624649,
+author = {Xing, Tong and Xiong, Cong and Ye, Chuan and Wei, Qi and Picorel, Javier and Barbalace, Antonio},
+title = {Maximizing VMs' IO Performance on Overcommitted CPUs with Fairness},
+year = {2023},
+isbn = {9798400703874},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3620678.3624649},
+doi = {10.1145/3620678.3624649},
+pages = {93–108},
+numpages = {16},
+keywords = {IO performance, KVM, Linux, Overcommit, compute resources, fair scheduling, low-latency, virtualization},
+location = {<conf-loc>, <city>Santa Cruz</city>, <state>CA</state>, <country>USA</country>, </conf-loc>},
+series = {SoCC '23}
+}
+
+
